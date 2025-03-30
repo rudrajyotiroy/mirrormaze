@@ -1,0 +1,6 @@
+build/**
+*.profdata.*
+*.newprof.*
+*.pdf
+*_newprof
+*.bc
