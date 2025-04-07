@@ -54,72 +54,73 @@ using namespace std;
 namespace {
 
 struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
-static StringRef getAnnotationString(CallInst *CI) {
-  // The second operand of llvm.var.annotation is the annotation string.
-  Value *AnnoPtr = CI->getArgOperand(1);
-  if (auto *CE = dyn_cast<ConstantExpr>(AnnoPtr)) {
-    if (auto *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
-      if (auto *CDA = dyn_cast<ConstantDataArray>(GV->getInitializer()))
-        return CDA->getAsString();
+  static StringRef getAnnotationString(CallInst *CI) {
+    // The second operand of llvm.var.annotation is the annotation string.
+    Value *AnnoPtr = CI->getArgOperand(1);
+    if (auto *CE = dyn_cast<ConstantExpr>(AnnoPtr)) {
+      if (auto *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+        if (auto *CDA = dyn_cast<ConstantDataArray>(GV->getInitializer()))
+          return CDA->getAsString();
+      }
     }
+    return "";
   }
-  return "";
-}
-// isSecretArgument: Returns true if the given function argument is annotated with "secret".
-bool isSecretArgument(Function &F, Argument &arg) {
-  PRINT(llvm::Twine("Entered isSecretArgument for argument: ") + arg.getName(), MED);
-  
-  // Iterate over the instructions in the function's entry block.
-  for (Instruction &I : F.getEntryBlock()) {
-    if (auto *AI = dyn_cast<AllocaInst>(&I)) {
-      PRINT(llvm::Twine("Examining alloca: ") + AI->getName(), LOW);
-      
-      // Check if this alloca stores our argument.
-      bool storesArg = false;
-      for (User *U : AI->users()) {
-        if (auto *store = dyn_cast<StoreInst>(U)) {
-          PRINT("Found store instruction on alloca.", LOW);
-          if (store->getValueOperand() == &arg) {
-            PRINT(llvm::Twine("Store matches argument: ") + arg.getName(), LOW);
-            storesArg = true;
-            break;
-          }
-        }
-      }
-      if (!storesArg) {
-        PRINT(llvm::Twine("Alloca ") + AI->getName() + " does not store argument.", LOW);
-        continue;
-      }
-      
-      // Now, check for annotation calls associated with the alloca.
-      for (User *U : AI->users()) {
-        // Direct call to llvm.var.annotation.
-        if (auto *CI = dyn_cast<CallInst>(U)) {
-          if (Function *called = CI->getCalledFunction()) {
-            PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-            if (called->getName() == "llvm.var.annotation") {
-              StringRef annoStr = getAnnotationString(CI);
-              PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-              if (annoStr.equals("secret")) {
-                PRINT("Found secret annotation directly on alloca.", LOW);
-                return true;
-              }
+  // isSecretArgument: Returns true if the given function argument is annotated with "secret".
+  bool isSecretArgument(Function &F, Argument &arg) {
+    PRINT(llvm::Twine("Entered isSecretArgument for argument: ") + arg.getName(), MED);
+    
+    // Iterate over the instructions in the function's entry block.
+    for (Instruction &I : F.getEntryBlock()) {
+      if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+        PRINT(llvm::Twine("Examining alloca: ") + AI->getName(), LOW);
+        
+        // Check if this alloca stores our argument.
+        bool storesArg = false;
+        for (User *U : AI->users()) {
+          if (auto *store = dyn_cast<StoreInst>(U)) {
+            PRINT("Found store instruction on alloca.", LOW);
+            if (store->getValueOperand() == &arg) {
+              PRINT(llvm::Twine("Store matches argument: ") + arg.getName(), LOW);
+              storesArg = true;
+              break;
             }
           }
         }
-        // If a bitcast is present, check its users.
-        if (auto *BC = dyn_cast<BitCastInst>(U)) {
-          PRINT(llvm::Twine("Found bitcast instruction on alloca: ") + BC->getName(), LOW);
-          for (User *V : BC->users()) {
-            if (auto *CI = dyn_cast<CallInst>(V)) {
-              if (Function *called = CI->getCalledFunction()) {
-                PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                if (called->getName() == "llvm.var.annotation") {
-                  StringRef annoStr = getAnnotationString(CI);
-                  PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
-                  if (annoStr.startswith("secret")) {
-                    PRINT("Found secret annotation on bitcast.", LOW);
-                    return true;
+        if (!storesArg) {
+          PRINT(llvm::Twine("Alloca ") + AI->getName() + " does not store argument.", LOW);
+          continue;
+        }
+        
+        // Now, check for annotation calls associated with the alloca.
+        for (User *U : AI->users()) {
+          // Direct call to llvm.var.annotation.
+          if (auto *CI = dyn_cast<CallInst>(U)) {
+            if (Function *called = CI->getCalledFunction()) {
+              PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
+              if (called->getName() == "llvm.var.annotation") {
+                StringRef annoStr = getAnnotationString(CI);
+                PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
+                if (annoStr.equals("secret")) {
+                  PRINT("Found secret annotation directly on alloca.", LOW);
+                  return true;
+                }
+              }
+            }
+          }
+          // If a bitcast is present, check its users.
+          if (auto *BC = dyn_cast<BitCastInst>(U)) {
+            PRINT(llvm::Twine("Found bitcast instruction on alloca: ") + BC->getName(), LOW);
+            for (User *V : BC->users()) {
+              if (auto *CI = dyn_cast<CallInst>(V)) {
+                if (Function *called = CI->getCalledFunction()) {
+                  PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
+                  if (called->getName() == "llvm.var.annotation") {
+                    StringRef annoStr = getAnnotationString(CI);
+                    PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
+                    if (annoStr.startswith("secret")) {
+                      PRINT("Found secret annotation on bitcast.", LOW);
+                      return true;
+                    }
                   }
                 }
               }
@@ -128,9 +129,8 @@ bool isSecretArgument(Function &F, Argument &arg) {
         }
       }
     }
+    return false;
   }
-}
-
 
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
 
