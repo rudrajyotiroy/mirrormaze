@@ -12,6 +12,25 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 
+enum ImportanceLevel {
+    NONE = 0,  // No messages are logged.
+    HIGH = 1,  // Only high-importance messages.
+    MED  = 2,  // Medium-importance messages.
+    LOW  = 3,  // Low-importance messages.
+    ALL  = 4   // All messages are logged.
+};
+
+// Change here
+#define VERBOSE ALL 
+
+#define PRINT(x, v)                           \
+  do {                                        \
+    if (VERBOSE > (v)) {                      \
+      errs() << "Line: " << __LINE__    \
+             << ", Message: " << (x) << "\n";  \
+    }                                         \
+  } while(0)
+
 
 using namespace llvm;
 using namespace std;
@@ -27,10 +46,9 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     BlockFrequencyAnalysis::Result &bfi = FAM.getResult<BlockFrequencyAnalysis>(F);
     LoopAnalysis::Result &li = FAM.getResult<LoopAnalysis>(F);
 
-#ifdef VERBOSE
-    errs() << "\n** Dummy Insertion Pass End\n\n";
-#endif
+    PRINT("Start of Pass", HIGH);
 
+    PRINT("End of Pass", HIGH);
     return PreservedAnalyses::all();
   }
 };
