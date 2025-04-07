@@ -5,8 +5,7 @@
 #define ITER 100  // Number of iterations for longer branches
 
 // Function to execute the branch based on the secret value and return a result
-int benchmarkBranch(int branch) {
-    int result = 0;
+int benchmarkBranch(int branch __attribute((annotate("secret"))), int result) {
 
     switch(branch) {
         // case 0:
@@ -83,7 +82,7 @@ int main(void) {
     int secretBranch = rand() % 2 + 5;
 
     // Execute the branch function with the secret value
-    int result = benchmarkBranch(secretBranch);
+    int result = benchmarkBranch(secretBranch, 0);
 
     printf("Branch %d executed, result = %d\n", secretBranch, result);
 

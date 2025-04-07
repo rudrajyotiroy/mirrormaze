@@ -14,7 +14,7 @@ PASS=fplicm-correctness                   # Choose either -fplicm-correctness ..
 rm -f default.profraw *_prof *_fplicm *.bc *.profdata *_output *.ll
 
 # Convert source code to bitcode (IR).
-clang -emit-llvm -c ${1}.c -Xclang -disable-O0-optnone -o ${1}.bc
+clang -emit-llvm -c -g -S ${1}.cpp -O0 -Xclang -disable-O0-optnone -fno-discard-value-names -o ${1}.bc
 
 # Canonicalize natural loops (Ref: llvm.org/doxygen/LoopSimplify_8h_source.html)
 opt -passes='loop-simplify' ${1}.bc -o ${1}.ls.bc
