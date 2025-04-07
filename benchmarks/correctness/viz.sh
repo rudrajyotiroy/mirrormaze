@@ -44,6 +44,7 @@ else
   DOT_FILES=$(ls *.dot)
 fi
 cat $DOT_FILES | dot -Tpdf > $OUTPUT_DIR/$BENCH.$VIZ_TYPE.new.pdf
+cat .benchmarkBranch.dot | dot -Tpdf > ../benchMark_modified.pdf
 echo "Created $BENCH.$VIZ_TYPE.new.pdf"
 
-rm -rf $TMP_DIR
+# rm -rf $TMP_DIR
