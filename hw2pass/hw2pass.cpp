@@ -133,62 +133,6 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     }
     return false;
   }
-/*
-  bool dependsOnSecretHelper(const Value *v, const std::set<const Value*> &secretValues, 
-                           std::set<const Value*> &visited) {
-    // If this value is one of our secret variables, return true.
-    errs() << "\n\n";
-    // PRINT("Helper entry", LOW);
-    if (secretValues.count(v)) {
-      errs() << "Found secret variable: " 
-            << (v->hasName() ? v->getName() : "<unnamed>") << "\n";
-      return true;
-    }
-    
-    // Prevent cycles.
-    if (visited.count(v))
-      return false;
-    visited.insert(v);
-
-    // If this value is an instruction, check all its operands.
-    if (const Instruction *I = dyn_cast<Instruction>(v)) {
-      errs() << "Inspecting instruction: " 
-            << I->getOpcodeName() << " in block " 
-            << I->getParent()->getName() << "\n";
-      for (unsigned i = 0; i < I->getNumOperands(); i++) {
-        const Value *op;    
-        if (auto *LI = dyn_cast<LoadInst>(I)) {
-          PRINT("Load instr", LOW);
-          op = LI->getPointerOperand();
-        }
-        else{
-          PRINT("Non-Load instr", LOW);
-          op = I->getOperand(i);
-        }
-        errs() << "  Checking operand " << i << ": " 
-              << (op->hasName() ? op->getName() : "<unnamed>") << "\n";
-        if (dependsOnSecretHelper(op, secretValues, visited))
-          return true;
-      }
-    } else {
-        errs() << "Value is not an instruction: " 
-              << (v->hasName() ? v->getName() : "<unnamed>") << "\n";
-
-      }
-    
-    return false;
-  }
-
-bool dependsOnSecret(const Value *v, const std::set<const Value*> &secretValues) {
-  std::set<const Value*> visited;
-  bool result = dependsOnSecretHelper(v, secretValues, visited);
-  errs() << "Final dependency check for value " 
-         << (v->hasName() ? v->getName() : "<unnamed>") 
-         << " returns " << (result ? "true" : "false") << "\n";
-  return result;
-}
-*/
-
 
   std::set<const Instruction*> runForwardTaintAnalysis(Function &F, std::set<const Value*> secretValues) {
     std::set<const Instruction*> secretBranches;
@@ -286,8 +230,10 @@ bool dependsOnSecret(const Value *v, const std::set<const Value*> &secretValues)
     PRINT(llvm::Twine("Run forward taint analysis...\n"), MED);
     
 
-    std::vector<CondInstInfo> secretCondBranches;
     std::set<const Instruction*> secretBranches = runForwardTaintAnalysis(F, secretValues);
+    if(secretBranches.size()){
+      PRINT(llvm::Twine("Detected secret branch...\n"), MED);
+    }
 
     // Iterate over all basic blocks in the function.
     // for (BasicBlock &BB : F) {
