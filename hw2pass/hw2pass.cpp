@@ -37,7 +37,7 @@ enum ImportanceLevel {
 };
 
 // Change here
-#define VERBOSE LOW 
+#define VERBOSE ALL 
 
 #define PRINT(x, v)                           \
   do {                                        \
@@ -50,10 +50,12 @@ enum ImportanceLevel {
 
 using namespace llvm;
 using namespace std;
+using CondInstInfo = std::pair<const Instruction*, std::vector<const BasicBlock*>>;
 
 namespace {
 
 struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
+
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
     Value *AnnoPtr = CI->getArgOperand(1);
@@ -131,6 +133,130 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     }
     return false;
   }
+/*
+  bool dependsOnSecretHelper(const Value *v, const std::set<const Value*> &secretValues, 
+                           std::set<const Value*> &visited) {
+    // If this value is one of our secret variables, return true.
+    errs() << "\n\n";
+    // PRINT("Helper entry", LOW);
+    if (secretValues.count(v)) {
+      errs() << "Found secret variable: " 
+            << (v->hasName() ? v->getName() : "<unnamed>") << "\n";
+      return true;
+    }
+    
+    // Prevent cycles.
+    if (visited.count(v))
+      return false;
+    visited.insert(v);
+
+    // If this value is an instruction, check all its operands.
+    if (const Instruction *I = dyn_cast<Instruction>(v)) {
+      errs() << "Inspecting instruction: " 
+            << I->getOpcodeName() << " in block " 
+            << I->getParent()->getName() << "\n";
+      for (unsigned i = 0; i < I->getNumOperands(); i++) {
+        const Value *op;    
+        if (auto *LI = dyn_cast<LoadInst>(I)) {
+          PRINT("Load instr", LOW);
+          op = LI->getPointerOperand();
+        }
+        else{
+          PRINT("Non-Load instr", LOW);
+          op = I->getOperand(i);
+        }
+        errs() << "  Checking operand " << i << ": " 
+              << (op->hasName() ? op->getName() : "<unnamed>") << "\n";
+        if (dependsOnSecretHelper(op, secretValues, visited))
+          return true;
+      }
+    } else {
+        errs() << "Value is not an instruction: " 
+              << (v->hasName() ? v->getName() : "<unnamed>") << "\n";
+
+      }
+    
+    return false;
+  }
+
+bool dependsOnSecret(const Value *v, const std::set<const Value*> &secretValues) {
+  std::set<const Value*> visited;
+  bool result = dependsOnSecretHelper(v, secretValues, visited);
+  errs() << "Final dependency check for value " 
+         << (v->hasName() ? v->getName() : "<unnamed>") 
+         << " returns " << (result ? "true" : "false") << "\n";
+  return result;
+}
+*/
+
+
+  std::set<const Instruction*> runForwardTaintAnalysis(Function &F, std::set<const Value*> secretValues) {
+    std::set<const Instruction*> secretBranches;
+    // Propagation: iterate until no new secret values are discovered.
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      
+      // Iterate over all basic blocks and instructions.
+      for (BasicBlock &BB : F) {
+        for (Instruction &Inst : BB) {
+          // Skip if the instruction is already marked as secret.
+          if (secretValues.count(&Inst))
+            continue;
+
+          // Check each operand; if any operand is secret, taint this instruction.
+          bool tainted = false;
+          for (unsigned op = 0; op < Inst.getNumOperands(); ++op) {
+            if (secretValues.count(Inst.getOperand(op)) > 0) {
+              tainted = true;
+              break;
+            }
+          }
+          
+          // If the instruction is tainted, update secret values.
+          if (tainted) {
+            secretValues.insert(&Inst);
+            changed = true;
+            errs() << "Tainted value: " << Inst << "\n";
+            
+            // Special handling: if the tainted instruction is a branch or switch.
+            if (BranchInst *BI = dyn_cast<BranchInst>(&Inst)) {
+              // For branch instructions, check if it is conditional.
+              if (BI->isConditional()) {
+                secretBranches.insert(BI);
+                errs() << "Found secret branch: " << *BI << "\n";
+              }
+            } else if (SwitchInst *SI = dyn_cast<SwitchInst>(&Inst)) {
+              secretBranches.insert(SI);
+              errs() << "Found secret switch: " << *SI << "\n";
+            } else if (StoreInst *SI = dyn_cast<StoreInst>(&Inst)) {
+              // Check if the value being stored is secret.
+              if (secretValues.count(SI->getValueOperand()) > 0) {
+                Value *dest = SI->getPointerOperand();
+                // Only add if not already tainted.
+                if (secretValues.insert(dest).second) {
+                  changed = true;
+                  errs() << "Tainted destination: " << *dest << "\n";
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Optionally, output results.
+    errs() << "\nFinal set of secret values:\n";
+    for (const Value *V : secretValues) {
+      errs() << *V << "\n";
+    }
+    errs() << "\nSecret branches/switches:\n";
+    for (const Instruction *I : secretBranches) {
+      errs() << *I << "\n";
+    }
+
+    return secretBranches;
+  }
 
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
 
@@ -156,51 +282,80 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
         PRINT(llvm::Twine("Found secret argument: ") + arg.getName(), MED);
       }
     }
-    PRINT(llvm::Twine("Done finding secret arguments"), LOW);
+    PRINT(llvm::Twine("Done finding secret arguments\n\n"), MED);
+    PRINT(llvm::Twine("Run forward taint analysis...\n"), MED);
+    
 
-    // Helper lambda that recursively checks if a given value depends on a secret.
-    std::function<bool(const Value*, std::set<const Value*>&)> dependsOnSecretRec =
-      [&](const Value* v, std::set<const Value*>& visited) -> bool {
-        if (secretValues.count(v))
-          return true;
-        if (visited.count(v))
-          return false;
-        visited.insert(v);
-        if (const Instruction* inst = dyn_cast<Instruction>(v)) {
-          for (const Use &U : inst->operands()) {
-            if (dependsOnSecretRec(U.get(), visited))
-              return true;
-          }
-        }
-        return false;
-      };
+    std::vector<CondInstInfo> secretCondBranches;
+    std::set<const Instruction*> secretBranches = runForwardTaintAnalysis(F, secretValues);
 
-    // A lambda wrapper that initializes the visited set.
-    auto dependsOnSecret = [&](const Value* v) -> bool {
-      std::set<const Value*> visited;
-      return dependsOnSecretRec(v, visited);
-    };
+    // Iterate over all basic blocks in the function.
+    // for (BasicBlock &BB : F) {
+    //   Instruction *TI = BB.getTerminator();
+    //   if (!TI)
+    //     continue; // TODO?
 
-    // Iterate over all basic blocks looking for conditional branches.
-    for (BasicBlock &BB : F) {
-      PRINT(llvm::Twine("Entering basic block"), LOW);
-      if (BranchInst *branch = dyn_cast<BranchInst>(BB.getTerminator())) {
-        if (branch->isConditional()) {
-          PRINT(llvm::Twine("Entering conditional branch"), LOW);
-          Value *cond = branch->getCondition();
-          if (dependsOnSecret(cond)) {
-            // Optionally, get the debug line number if available.
-            unsigned line = 0;
-            if (DILocation *loc = branch->getDebugLoc())
-              line = loc->getLine();
+    //   // Check if the terminator is a BranchInst.
+    //   if (auto *branch = dyn_cast<BranchInst>(TI)) {
+    //     // Only consider conditional branches.
+    //     if (branch->isConditional()) {
+    //       PRINT(llvm::Twine("Entering conditional branch in block ") + BB.getName(), LOW);
+          
+    //       // Collect successors.
+    //       std::vector<const BasicBlock*> successors;
+    //       for (unsigned i = 0; i < branch->getNumSuccessors(); i++) {
+    //         successors.push_back(branch->getSuccessor(i));
+    //         PRINT(llvm::Twine("Successor ") + std::to_string(i) + ": " +
+    //               branch->getSuccessor(i)->getName(), LOW);
+    //       }
+    //       // Store the branch and its successors.
+    //       secretCondBranches.push_back(std::make_pair(branch, successors));
 
-            // Use llvm::Twine and std::to_string() to build the message.
-            PRINT(llvm::Twine("Conditional branch depending on secret found at line ") + std::to_string(line), LOW);
-          }
-        }
-      }
-      
-    }
+    //       // Check if condition depends on secret.
+    //       Value *cond = branch->getCondition();
+    //       if (dependsOnSecret(cond, secretValues)) {
+    //         unsigned line = 0;
+    //         if (DILocation *loc = branch->getDebugLoc())
+    //           line = loc->getLine();
+    //         PRINT(llvm::Twine("Conditional branch depending on secret found at line ") +
+    //               std::to_string(line), LOW);
+    //       }
+    //     }
+    //   }
+    //   // Check if the terminator is a SwitchInst.
+    //   else if (auto *SI = dyn_cast<SwitchInst>(TI)) {
+    //     PRINT(llvm::Twine("Entering switch statement in block ") + BB.getName(), LOW);
+        
+    //     std::vector<const BasicBlock*> successors;
+    //     // Store the default destination first.
+    //     successors.push_back(SI->getDefaultDest());
+    //     PRINT("Default destination: " + SI->getDefaultDest()->getName(), LOW);
+        
+    //     // Iterate over each case.
+    //     unsigned numCases = SI->getNumCases();
+    //     for (unsigned i = 0; i < numCases; ++i) {
+    //       BasicBlock *caseDest = SI->getSuccessor(i);
+    //       successors.push_back(caseDest);
+    //       // For more information, you could also extract and print the case value:
+    //       // ConstantInt *caseVal = SI->findCaseValue(i);
+    //       // PRINT(llvm::Twine("Case ") + std::to_string(i) + " with value " +
+    //       //       caseVal->getValue().toString(10, true) + " goes to: " +
+    //       //       caseDest->getName(), LOW);
+    //     }
+    //     // Store the switch and its successors.
+    //     secretCondBranches.push_back(std::make_pair(SI, successors));
+
+    //     // Check the switch condition for secret dependency.
+    //     Value *cond = SI->getCondition();
+    //     if (dependsOnSecret(cond, secretValues)) {
+    //       unsigned line = 0;
+    //       if (DILocation *loc = SI->getDebugLoc())
+    //         line = loc->getLine();
+    //       PRINT(llvm::Twine("Switch statement depending on secret found at line ") +
+    //             std::to_string(line), LOW);
+    //     }
+    //   }
+    // }
 
 
 
