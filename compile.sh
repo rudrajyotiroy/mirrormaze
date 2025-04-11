@@ -6,8 +6,8 @@ cmake ..
 make
 echo "Compile done"
 cd ../benchmarks/correctness
-sh run.sh demo_test
-sh viz.sh demo_test
+sh run.sh $1
+sh viz.sh $1
 echo "Demo done"
 # rm -f default.profraw *_prof *_fplicm *.bc *.profdata *_output *.ll
 # sh run.sh hw2correct1

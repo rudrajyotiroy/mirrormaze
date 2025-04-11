@@ -1,0 +1,25 @@
+digraph DDG {
+  "0x5595f8c7c840" [label="  %pgocount2 = load i64, i64* getelementptr inbounds ([3 x i64], [3 x i64]* @__profc__Z6modexpyyy, i64 0, i64 0), align 8, !dbg !316"];
+  "0x5595f8c7c900" [label="  %9 = add i64 %pgocount2, 1, !dbg !316"];
+  "0x5595f8c7c990" [label="  store i64 %9, i64* getelementptr inbounds ([3 x i64], [3 x i64]* @__profc__Z6modexpyyy, i64 0, i64 0), align 8, !dbg !316"];
+  "0x5595f8c7ca00" [label="  %10 = load i64, i64* %exp.addr, align 8, !dbg !316"];
+  "0x5595f8c7ca90" [label="  %shr = lshr i64 %10, 1, !dbg !316"];
+  "0x5595f8c7cb20" [label="  store i64 %shr, i64* %exp.addr, align 8, !dbg !316"];
+  "0x5595f8c7cb90" [label="  %11 = load i64, i64* %base.addr, align 8, !dbg !317"];
+  "0x5595f8c7cc30" [label="  %12 = load i64, i64* %base.addr, align 8, !dbg !318"];
+  "0x5595f8c7ccf0" [label="  %mul3 = mul i64 %11, %12, !dbg !319"];
+  "0x5595f8c7cd90" [label="  %13 = load i64, i64* %mod.addr, align 8, !dbg !320"];
+  "0x5595f8c7ce50" [label="  %rem4 = urem i64 %mul3, %13, !dbg !321"];
+  "0x5595f8c7cf10" [label="  store i64 %rem4, i64* %base.addr, align 8, !dbg !322"];
+  "0x5595f8c7cfb0" [label="  br label %while.cond, !dbg !298, !llvm.loop !323"];
+  "0x5595f8c7c150" -> "0x5595f8c7c840";
+  "0x5595f8c7c840" -> "0x5595f8c7c900";
+  "0x5595f8c7c900" -> "0x5595f8c7c990";
+  "0x5595f8c7ca00" -> "0x5595f8c7ca90";
+  "0x5595f8c7ca90" -> "0x5595f8c7cb20";
+  "0x5595f8c7cb90" -> "0x5595f8c7ccf0";
+  "0x5595f8c7cc30" -> "0x5595f8c7ccf0";
+  "0x5595f8c7ccf0" -> "0x5595f8c7ce50";
+  "0x5595f8c7cd90" -> "0x5595f8c7ce50";
+  "0x5595f8c7ce50" -> "0x5595f8c7cf10";
+}

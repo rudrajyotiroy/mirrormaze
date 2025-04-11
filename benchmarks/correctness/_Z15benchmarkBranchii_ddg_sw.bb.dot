@@ -1,0 +1,10 @@
+digraph DDG {
+  "0x55a4a6511510" [label="  %pgocount = load i64, i64* getelementptr inbounds ([4 x i64], [4 x i64]* @__profc__Z15benchmarkBranchii, i64 0, i64 2), align 8, !dbg !296"];
+  "0x55a4a65115d0" [label="  %1 = add i64 %pgocount, 1, !dbg !296"];
+  "0x55a4a6511660" [label="  store i64 %1, i64* getelementptr inbounds ([4 x i64], [4 x i64]* @__profc__Z15benchmarkBranchii, i64 0, i64 2), align 8, !dbg !296"];
+  "0x55a4a65116f0" [label="  store i32 82, i32* %result.addr, align 4, !dbg !296"];
+  "0x55a4a6511760" [label="  br label %sw.epilog, !dbg !298"];
+  "0x55a4a6511510" -> "0x55a4a65115d0";
+  "0x55a4a65115d0" -> "0x55a4a6511660";
+  "0x55a4a6523a08" -> "0x55a4a6511510";
+}

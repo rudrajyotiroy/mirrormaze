@@ -1,0 +1,31 @@
+digraph DDG {
+  "0x556445ee76b0" [label="  %pgocount2 = load i64, i64* getelementptr inbounds ([3 x i64], [3 x i64]* @__profc__Z24montgomery_ladder_modexpyyy, i64 0, i64 1), align 8, !dbg !339"];
+  "0x556445ee7770" [label="  %15 = add i64 %pgocount2, 1, !dbg !339"];
+  "0x556445ee7800" [label="  store i64 %15, i64* getelementptr inbounds ([3 x i64], [3 x i64]* @__profc__Z24montgomery_ladder_modexpyyy, i64 0, i64 1), align 8, !dbg !339"];
+  "0x556445ee7870" [label="  %16 = load i64, i64* %R0, align 8, !dbg !339"];
+  "0x556445ee78e0" [label="  %17 = load i64, i64* %R1, align 8, !dbg !341"];
+  "0x556445ee79a0" [label="  %mul5 = mul i64 %16, %17, !dbg !342"];
+  "0x556445ee7a40" [label="  %18 = load i64, i64* %mod.addr, align 8, !dbg !343"];
+  "0x556445ee7b00" [label="  %rem6 = urem i64 %mul5, %18, !dbg !344"];
+  "0x556445ee7bc0" [label="  store i64 %rem6, i64* %R1, align 8, !dbg !345"];
+  "0x556445effc80" [label="  %19 = load i64, i64* %R0, align 8, !dbg !346"];
+  "0x556445effd20" [label="  %20 = load i64, i64* %R0, align 8, !dbg !347"];
+  "0x556445effde0" [label="  %mul7 = mul i64 %19, %20, !dbg !348"];
+  "0x556445effe80" [label="  %21 = load i64, i64* %mod.addr, align 8, !dbg !349"];
+  "0x556445efff40" [label="  %rem8 = urem i64 %mul7, %21, !dbg !350"];
+  "0x556445f00410" [label="  store i64 %rem8, i64* %R0, align 8, !dbg !351"];
+  "0x556445f004b0" [label="  br label %if.end"];
+  "0x556445ee76b0" -> "0x556445ee7770";
+  "0x556445ee7770" -> "0x556445ee7800";
+  "0x556445ee7870" -> "0x556445ee79a0";
+  "0x556445ee78e0" -> "0x556445ee79a0";
+  "0x556445ee79a0" -> "0x556445ee7b00";
+  "0x556445ee7a40" -> "0x556445ee7b00";
+  "0x556445ee7b00" -> "0x556445ee7bc0";
+  "0x556445efdfa0" -> "0x556445ee76b0";
+  "0x556445effc80" -> "0x556445effde0";
+  "0x556445effd20" -> "0x556445effde0";
+  "0x556445effde0" -> "0x556445efff40";
+  "0x556445effe80" -> "0x556445efff40";
+  "0x556445efff40" -> "0x556445f00410";
+}

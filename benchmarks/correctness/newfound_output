@@ -1,1 +1,5 @@
-Branch 6 executed, result = 4261
+RSA Branch Unsafe Example
+Plaintext : 65
+Ciphertext: 2790
+Decrypted : 65
+Success: Decrypted text matches plaintext.

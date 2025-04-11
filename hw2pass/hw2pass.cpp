@@ -23,6 +23,10 @@
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FileSystem.h"
+
+// #include "llvm/Analysis/DDG.h"
+// #include "llvm/Analysis/DependenceAnalysis.h"
 
 #include <set>
 #include <functional>
@@ -55,6 +59,17 @@ using CondInstInfo = std::pair<const Instruction*, std::vector<const BasicBlock*
 namespace {
 
 struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
+
+  struct DataDependenceGraph {
+    std::set<const Instruction*> Nodes;
+    std::map<const Instruction*, std::set<const Instruction*>> Edges;
+    void addNode(const Instruction *I) {
+      Nodes.insert(I);
+    }
+    void addEdge(const Instruction *From, const Instruction *To) {
+      Edges[From].insert(To);
+    }
+  };
 
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
@@ -134,8 +149,8 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     return false;
   }
 
-  std::set<const Instruction*> runForwardTaintAnalysis(Function &F, std::set<const Value*> secretValues) {
-    std::set<const Instruction*> secretBranches;
+  std::set<Instruction*> runForwardTaintAnalysis(Function &F, std::set<const Value*> secretValues) {
+    std::set<Instruction*> secretBranches;
     // Propagation: iterate until no new secret values are discovered.
     bool changed = true;
     while (changed) {
@@ -202,6 +217,58 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     return secretBranches;
   }
 
+  // Build the data-dependence graph for a given basic block.
+    // For every instruction in the block, add an edge from an instruction defining a variable to
+    // an instruction that uses it. This example limits itself to instructions in the same block.
+    // Also, a control dependency edge is added from the conditional instruction to the first
+    // instruction of the block.
+    void buildDDGForBasicBlock(BasicBlock *BB, DataDependenceGraph &ddg,
+                               const Instruction *condInst) {
+      // If the block is not empty, add a control edge from the secret-dependent branch instruction
+      // to the block's first instruction.
+      if (!BB->empty()) {
+        Instruction *firstInst = &*(BB->begin());
+        ddg.addNode(firstInst);
+        ddg.addEdge(condInst, firstInst);
+      }
+      // Process each instruction in the basic block.
+      for (Instruction &I : *BB) {
+        ddg.addNode(&I);
+        // For each operand of 'I', if the operand is defined by an instruction in BB, add a def-use edge.
+        for (unsigned op = 0; op < I.getNumOperands(); ++op) {
+          if (Instruction *defInst = dyn_cast<Instruction>(I.getOperand(op))) {
+            if (defInst->getParent() == BB)
+              ddg.addEdge(defInst, &I);
+          }
+        }
+      }
+    }
+
+    // Dump the data-dependence graph in DOT format to a file.
+    void dumpDDG(const DataDependenceGraph &ddg, const std::string &FileName) {
+      std::error_code EC;
+      raw_fd_ostream file(FileName, EC, sys::fs::OF_Text);
+      if (EC) {
+        errs() << "Error opening file " << FileName << " for writing DDG.\n";
+        return;
+      }
+      file << "digraph DDG {\n";
+      // For each node, write out a node label.
+      for (const Instruction *I : ddg.Nodes) {
+        // We use the pointer value as the node identifier and print the instruction as its label.
+        file << "  \"" << I << "\" [label=\"" << *I << "\"];\n";
+      }
+      // Output all edges.
+      for (auto &pair : ddg.Edges) {
+        const Instruction *From = pair.first;
+        for (const Instruction *To : pair.second)
+          file << "  \"" << From << "\" -> \"" << To << "\";\n";
+      }
+      file << "}\n";
+      file.close();
+      errs() << "DDG dumped to file: " << FileName << "\n";
+    }
+
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
 
     if (F.getName() == "main"){
@@ -230,9 +297,42 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
     PRINT(llvm::Twine("Run forward taint analysis...\n"), MED);
     
 
-    std::set<const Instruction*> secretBranches = runForwardTaintAnalysis(F, secretValues);
+    std::set<Instruction*> secretBranches = runForwardTaintAnalysis(F, secretValues);
     if(secretBranches.size()){
       PRINT(llvm::Twine("Detected secret branch...\n"), MED);
+    } else{
+      PRINT(llvm::Twine("Detected no secret branches, exiting...\n"), MED);
+      return PreservedAnalyses::all();
+    }
+
+    for (auto condInst : secretBranches) {
+      // If the branch is an if–else, there are two successors.
+      PRINT(("Onto condition..."), LOW);
+      if (BranchInst *BI = dyn_cast<BranchInst>(condInst)){
+        unsigned numSucc = BI->getNumSuccessors();
+        for (unsigned idx = 0; idx < numSucc; ++idx) {
+          PRINT(("Onto successor %d", idx), LOW);
+          BasicBlock *succ = BI->getSuccessor(idx);
+          DataDependenceGraph ddg;
+          buildDDGForBasicBlock(succ, ddg, condInst);
+          // Generate a filename that encodes the function name and branch.
+          std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
+          dumpDDG(ddg, FileName);
+        }
+      }
+      if (SwitchInst *SI = dyn_cast<SwitchInst>(condInst)) {
+        unsigned numSucc = SI->getNumSuccessors();
+        for (unsigned idx = 0; idx < numSucc; ++idx) {
+          PRINT(("Onto successor %d", idx), LOW);
+          BasicBlock *succ = SI->getSuccessor(idx);
+          DataDependenceGraph ddg;
+          buildDDGForBasicBlock(succ, ddg, condInst);
+          // Generate a filename that encodes the function name and the successor block.
+          std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
+          dumpDDG(ddg, FileName);
+        }
+      }
+
     }
 
     // Iterate over all basic blocks in the function.
