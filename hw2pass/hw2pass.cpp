@@ -1,4 +1,9 @@
 //===-- Updated LLVMSymmetricPass with Control Flow Analysis -----------===//
+// Author : Rudrajyoti Roy
+// Last Stable Version : 10/04/25
+// Run instruction : cd mirrormaze; ./compile.sh safeRSA; ./compile.sh unsafeRSA
+// Progress : Attribute Detection, Taint Analysis, DDG generation
+
 #include <iostream>
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -237,6 +242,7 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
         // For each operand of 'I', if the operand is defined by an instruction in BB, add a def-use edge.
         for (unsigned op = 0; op < I.getNumOperands(); ++op) {
           if (Instruction *defInst = dyn_cast<Instruction>(I.getOperand(op))) {
+            //TODO : Does getParent capture all data dependencies??
             if (defInst->getParent() == BB)
               ddg.addEdge(defInst, &I);
           }
@@ -309,15 +315,28 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
       // If the branch is an if–else, there are two successors.
       PRINT(("Onto condition..."), LOW);
       if (BranchInst *BI = dyn_cast<BranchInst>(condInst)){
+        BasicBlock *termBB = nullptr;
         unsigned numSucc = BI->getNumSuccessors();
         for (unsigned idx = 0; idx < numSucc; ++idx) {
           PRINT(("Onto successor %d", idx), LOW);
           BasicBlock *succ = BI->getSuccessor(idx);
-          DataDependenceGraph ddg;
-          buildDDGForBasicBlock(succ, ddg, condInst);
-          // Generate a filename that encodes the function name and branch.
-          std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
-          dumpDDG(ddg, FileName);
+          bool fallThrough = false;
+          for (BasicBlock *term : successors(succ)) {
+            if(termBB == nullptr){
+              termBB = term;
+            } 
+            if (termBB != term){
+              PRINT("Fallthrough detected", LOW); //TODO : Handling will be required while adding dummy code (entire supertree can be added without insertion)
+              fallThrough = true;
+            }
+          }
+          if (!fallThrough){
+            DataDependenceGraph ddg;
+            buildDDGForBasicBlock(succ, ddg, condInst);
+            // Generate a filename that encodes the function name and branch.
+            std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
+            dumpDDG(ddg, FileName);
+          }
         }
       }
       if (SwitchInst *SI = dyn_cast<SwitchInst>(condInst)) {
@@ -334,76 +353,6 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
       }
 
     }
-
-    // Iterate over all basic blocks in the function.
-    // for (BasicBlock &BB : F) {
-    //   Instruction *TI = BB.getTerminator();
-    //   if (!TI)
-    //     continue; // TODO?
-
-    //   // Check if the terminator is a BranchInst.
-    //   if (auto *branch = dyn_cast<BranchInst>(TI)) {
-    //     // Only consider conditional branches.
-    //     if (branch->isConditional()) {
-    //       PRINT(llvm::Twine("Entering conditional branch in block ") + BB.getName(), LOW);
-          
-    //       // Collect successors.
-    //       std::vector<const BasicBlock*> successors;
-    //       for (unsigned i = 0; i < branch->getNumSuccessors(); i++) {
-    //         successors.push_back(branch->getSuccessor(i));
-    //         PRINT(llvm::Twine("Successor ") + std::to_string(i) + ": " +
-    //               branch->getSuccessor(i)->getName(), LOW);
-    //       }
-    //       // Store the branch and its successors.
-    //       secretCondBranches.push_back(std::make_pair(branch, successors));
-
-    //       // Check if condition depends on secret.
-    //       Value *cond = branch->getCondition();
-    //       if (dependsOnSecret(cond, secretValues)) {
-    //         unsigned line = 0;
-    //         if (DILocation *loc = branch->getDebugLoc())
-    //           line = loc->getLine();
-    //         PRINT(llvm::Twine("Conditional branch depending on secret found at line ") +
-    //               std::to_string(line), LOW);
-    //       }
-    //     }
-    //   }
-    //   // Check if the terminator is a SwitchInst.
-    //   else if (auto *SI = dyn_cast<SwitchInst>(TI)) {
-    //     PRINT(llvm::Twine("Entering switch statement in block ") + BB.getName(), LOW);
-        
-    //     std::vector<const BasicBlock*> successors;
-    //     // Store the default destination first.
-    //     successors.push_back(SI->getDefaultDest());
-    //     PRINT("Default destination: " + SI->getDefaultDest()->getName(), LOW);
-        
-    //     // Iterate over each case.
-    //     unsigned numCases = SI->getNumCases();
-    //     for (unsigned i = 0; i < numCases; ++i) {
-    //       BasicBlock *caseDest = SI->getSuccessor(i);
-    //       successors.push_back(caseDest);
-    //       // For more information, you could also extract and print the case value:
-    //       // ConstantInt *caseVal = SI->findCaseValue(i);
-    //       // PRINT(llvm::Twine("Case ") + std::to_string(i) + " with value " +
-    //       //       caseVal->getValue().toString(10, true) + " goes to: " +
-    //       //       caseDest->getName(), LOW);
-    //     }
-    //     // Store the switch and its successors.
-    //     secretCondBranches.push_back(std::make_pair(SI, successors));
-
-    //     // Check the switch condition for secret dependency.
-    //     Value *cond = SI->getCondition();
-    //     if (dependsOnSecret(cond, secretValues)) {
-    //       unsigned line = 0;
-    //       if (DILocation *loc = SI->getDebugLoc())
-    //         line = loc->getLine();
-    //       PRINT(llvm::Twine("Switch statement depending on secret found at line ") +
-    //             std::to_string(line), LOW);
-    //     }
-    //   }
-    // }
-
-
 
     PRINT("End of Pass", HIGH);
     return PreservedAnalyses::all();
