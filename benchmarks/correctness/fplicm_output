@@ -1,5 +1,109 @@
-RSA Branch Unsafe Example
-Plaintext : 65
-Ciphertext: 2790
-Decrypted : 65
-Success: Decrypted text matches plaintext.
+Created account ACC1001 for Alice Johnson with initial deposit $1000.00
+Created account ACC1002 for Bob Smith with initial deposit $1500.00
+Created account ACC1003 for Carol Davis with initial deposit $2000.00
+
+Starting demo run with 100 operations...
+
+Deposited $50.00 (fee: $0.00) into account ACC1001
+Deposited $54.00 (fee: $0.00) into account ACC1001
+Deposited $58.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $1180.00
+Account: ACC1002 | Customer: Bob Smith | Balance: $1424.25
+Account: ACC1003 | Customer: Carol Davis | Balance: $1981.82
+---------------------------
+
+Deposited $62.00 (fee: $0.00) into account ACC1001
+Deposited $66.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $1383.88
+Account: ACC1002 | Customer: Bob Smith | Balance: $1410.75
+Account: ACC1003 | Customer: Carol Davis | Balance: $1991.04
+---------------------------
+
+Deposited $50.00 (fee: $0.00) into account ACC1001
+Deposited $54.00 (fee: $0.00) into account ACC1001
+Deposited $58.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $1629.87
+Account: ACC1002 | Customer: Bob Smith | Balance: $1387.15
+Account: ACC1003 | Customer: Carol Davis | Balance: $2037.37
+---------------------------
+
+Deposited $62.00 (fee: $0.00) into account ACC1001
+Deposited $66.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $1923.36
+Account: ACC1002 | Customer: Bob Smith | Balance: $1446.62
+Account: ACC1003 | Customer: Carol Davis | Balance: $2173.43
+---------------------------
+
+Deposited $50.00 (fee: $0.00) into account ACC1001
+Deposited $54.00 (fee: $0.00) into account ACC1001
+Deposited $58.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $2262.59
+Account: ACC1002 | Customer: Bob Smith | Balance: $1478.86
+Account: ACC1003 | Customer: Carol Davis | Balance: $2314.73
+---------------------------
+
+Deposited $62.00 (fee: $0.00) into account ACC1001
+Deposited $66.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $2755.37
+Account: ACC1002 | Customer: Bob Smith | Balance: $1627.42
+Account: ACC1003 | Customer: Carol Davis | Balance: $2585.82
+---------------------------
+
+Deposited $50.00 (fee: $0.00) into account ACC1001
+Deposited $54.00 (fee: $0.00) into account ACC1001
+Deposited $58.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $3264.15
+Account: ACC1002 | Customer: Bob Smith | Balance: $1736.08
+Account: ACC1003 | Customer: Carol Davis | Balance: $2865.29
+---------------------------
+
+Deposited $62.00 (fee: $0.00) into account ACC1001
+Deposited $66.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $4089.90
+Account: ACC1002 | Customer: Bob Smith | Balance: $2019.28
+Account: ACC1003 | Customer: Carol Davis | Balance: $3375.87
+---------------------------
+
+Deposited $50.00 (fee: $0.00) into account ACC1001
+Deposited $54.00 (fee: $0.00) into account ACC1001
+Deposited $58.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $4931.04
+Account: ACC1002 | Customer: Bob Smith | Balance: $2252.64
+Account: ACC1003 | Customer: Carol Davis | Balance: $3869.89
+---------------------------
+
+Deposited $62.00 (fee: $0.00) into account ACC1001
+Deposited $66.00 (fee: $0.00) into account ACC1001
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $6538.21
+Account: ACC1002 | Customer: Bob Smith | Balance: $2770.37
+Account: ACC1003 | Customer: Carol Davis | Balance: $4825.88
+---------------------------
+
+
+----- Account Summary -----
+Account: ACC1001 | Customer: Alice Johnson | Balance: $6538.21
+Account: ACC1002 | Customer: Bob Smith | Balance: $2770.37
+Account: ACC1003 | Customer: Carol Davis | Balance: $4825.88
+---------------------------
+
+Demo run complete. Shutting down server.
