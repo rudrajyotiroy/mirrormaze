@@ -6,8 +6,10 @@
 
 // Function to execute the branch based on the secret value and return a result
 int benchmarkBranch(int branch __attribute((annotate("secret"))), int result) {
-
-    switch(branch) {
+    int A[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    int i = 3;
+    int k = A[branch];
+    switch(k) {
         // case 0:
         //     for (int i = 0; i < ITER; i++) {
         //         result += (i % 3) * 7;
