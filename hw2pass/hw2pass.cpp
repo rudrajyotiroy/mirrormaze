@@ -35,7 +35,7 @@
 
 #include <set>
 #include <functional>
-
+// #define LEGACY_LLVM
 
 enum ImportanceLevel {
     NONE = 0,  // No messages are logged.
@@ -79,12 +79,19 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
     Value *AnnoPtr = CI->getArgOperand(1);
+    #ifdef LEGACY_LLVM
     if (auto *CE = dyn_cast<ConstantExpr>(AnnoPtr)) {
-      if (auto *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
-        if (auto *CDA = dyn_cast<ConstantDataArray>(GV->getInitializer()))
-          return CDA->getAsString();
-      }
+    if (auto *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+    #else
+    AnnoPtr = AnnoPtr->stripPointerCasts();
+    if (auto *GV = dyn_cast<GlobalVariable>(AnnoPtr)) {
+    #endif
+      if (auto *CDA = dyn_cast<ConstantDataArray>(GV->getInitializer()))
+        return CDA->getAsString();
     }
+    #ifdef LEGACY_LLVM
+    }
+    #endif
     return "";
   }
   // isSecretArgument: Returns true if the given function argument is annotated with "secret".
@@ -119,10 +126,10 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
           if (auto *CI = dyn_cast<CallInst>(U)) {
             if (Function *called = CI->getCalledFunction()) {
               PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-              if (called->getName() == "llvm.var.annotation") {
+              if (called->getName().startswith("llvm.var.annotation")) {
                 StringRef annoStr = getAnnotationString(CI);
                 PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-                if (annoStr.equals("secret")) {
+                if (annoStr.startswith("secret")) {
                   PRINT("Found secret annotation directly on alloca.", LOW);
                   return true;
                 }
@@ -136,7 +143,7 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
               if (auto *CI = dyn_cast<CallInst>(V)) {
                 if (Function *called = CI->getCalledFunction()) {
                   PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                  if (called->getName() == "llvm.var.annotation") {
+                  if (called->getName().startswith("llvm.var.annotation")) {
                     StringRef annoStr = getAnnotationString(CI);
                     PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
                     if (annoStr.startswith("secret")) {

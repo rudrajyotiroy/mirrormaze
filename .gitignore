@@ -4,3 +4,5 @@ build/**
 *.pdf
 *_newprof
 *.bc
+benchmarks/correctness/*
+!benchmarks/correctness/*.c*
