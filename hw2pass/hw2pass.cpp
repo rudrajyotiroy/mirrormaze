@@ -65,6 +65,10 @@ namespace {
 
 struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
 
+  // Anirudh : I am currently implementing 1 , can do 2 . Just making code much cleaner
+  enum DummyMode { ALL_DUMMY_OPERANDS, MIXED_OPERANDS };
+
+
   struct DataDependenceGraph {
     std::set<const Instruction*> Nodes;
     std::map<const Instruction*, std::set<const Instruction*>> Edges;
@@ -75,6 +79,168 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
       Edges[From].insert(To);
     }
   };
+
+  // Anirudh : Added SuperGraph struct to define the supergraph
+  struct SuperGraph {
+    std::set<const Instruction*> Nodes;
+    std::map<const Instruction*, std::set<const Instruction*>> Edges;
+  
+    void addNode(const Instruction *I) {
+      Nodes.insert(I);
+    }
+  
+    void addEdge(const Instruction *From, const Instruction *To) {
+      Edges[From].insert(To);
+    }
+  
+    // Utility: Get predecessors of a node
+    std::set<const Instruction*> getPredecessors(const Instruction* I) const {
+      std::set<const Instruction*> preds;
+      for (const auto& pair : Edges) {
+        if (pair.second.count(I)) preds.insert(pair.first);
+      }
+      return preds;
+    }
+
+  
+    // Utility: Get successors of a node
+    std::set<const Instruction*> getSuccessors(const Instruction* I) const {
+      auto it = Edges.find(I);
+      if (it != Edges.end()) return it->second;
+      return {};
+    }
+  
+    // Utility: Get root nodes
+    std::set<const Instruction*> getRoots() const {
+      std::set<const Instruction*> roots = Nodes;
+      for (const auto& pair : Edges) {
+        for (const Instruction* target : pair.second) {
+          roots.erase(target); // Remove nodes that have incoming edges
+        }
+      }
+      return roots;
+    }
+  };
+  
+  // Anirudh: Giving this a seperate function for cleaner code , and easier readablity.
+  void dumpSuperGraph(const SuperGraph& supergraph, const std::string& FileName) {
+    std::error_code EC;
+    raw_fd_ostream file(FileName, EC, sys::fs::OF_Text);
+    if (EC) {
+      errs() << "Error opening file " << FileName << " for writing SuperGraph.\n";
+      return;
+    }
+  
+    file << "digraph SuperGraph {\n";
+    for (const Instruction *I : supergraph.Nodes) {
+      file << "  \"" << I << "\" [label=\"" << *I << "\"];\n";
+    }
+    for (auto &pair : supergraph.Edges) {
+      const Instruction *From = pair.first;
+      for (const Instruction *To : pair.second) {
+        file << "  \"" << From << "\" -> \"" << To << "\";\n";
+      }
+    }
+    file << "}\n";
+    file.close();
+    errs() << "SuperGraph dumped to file: " << FileName << "\n";
+  }
+
+  // Anirudh: Placeholder merging function
+  SuperGraph mergeDDGs(const std::vector<DataDependenceGraph>& allDDGs) {
+    SuperGraph supergraph;
+
+    for (const auto& ddg : allDDGs) {
+        // Add all nodes from the DDG into the supergraph
+        for (const auto* node : ddg.Nodes) {
+            if (!node) {
+                errs() << "Warning: Null node in DDG\n";
+                continue;
+            }
+            supergraph.addNode(node);
+        }
+
+        // Add all edges from the DDG into the supergraph
+        for (const auto& edge : ddg.Edges) {
+            const Instruction* from = edge.first;
+            for (const Instruction* to : edge.second) {
+                supergraph.addEdge(from, to);
+            }
+        }
+    }
+
+    // Optional: Debug info
+    errs() << "SuperGraph built: " << supergraph.Nodes.size() << " nodes, "
+           << supergraph.Edges.size() << " edges.\n";
+
+    return supergraph;
+}
+
+// Anirudh: This is the helper that adds instruction
+Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
+                                const std::vector<std::string> &superGraphOps,
+                                DummyMode mode = ALL_DUMMY_OPERANDS) {
+    LLVMContext &Ctx = Builder.getContext();
+    Value *dummyInput = Builder.getInt32(42); // Arbitrary dummy input
+    Value *prevDummyRes = nullptr;
+
+    for (const auto &opcode : superGraphOps) {
+        Value *lhs = nullptr;
+        Value *rhs = dummyInput;
+
+        if (!prevDummyRes) {
+            // First operation
+            if (mode == ALL_DUMMY_OPERANDS) {
+                lhs = dummyInput;
+            } else if (mode == MIXED_OPERANDS) {
+                // Optional: use dummyInput or safe constant or random operand
+                lhs = dummyInput; // For now, safe choice
+            }
+        } else {
+            lhs = prevDummyRes;
+        }
+
+        // Build operation based on opcode
+        Value *result = nullptr;
+        if (opcode == "add") {
+            result = Builder.CreateAdd(lhs, rhs);
+        } else if (opcode == "mul") {
+            result = Builder.CreateMul(lhs, rhs);
+        } else if (opcode == "xor") {
+            result = Builder.CreateXor(lhs, rhs);
+        } else if (opcode == "load") {
+            Value *dummyPtr = Builder.CreateAlloca(Type::getInt32Ty(Ctx));
+            result = Builder.CreateLoad(Type::getInt32Ty(Ctx), dummyPtr);
+        } else if (opcode == "store") {
+            Value *dummyPtr = Builder.CreateAlloca(Type::getInt32Ty(Ctx));
+            Builder.CreateStore(rhs, dummyPtr, true); // volatile store
+            result = rhs; // Chain forward dummyInput
+        } else {
+            // Fallback: default to add
+            result = Builder.CreateAdd(lhs, rhs);
+        }
+
+        prevDummyRes = result;
+
+        
+        for (const auto &opcode : superGraphOps) {
+            errs() << "  Dummy operation: " << opcode << "\n";
+        }
+
+    }
+
+    return prevDummyRes; // Final dummy result (if you want to use or ignore)
+}
+
+  // Anirudh: Helper for helper lol
+  std::vector<std::string> extractSuperGraphOpSequence(const SuperGraph &supergraph) {
+  std::vector<std::string> opSequence;
+  for (const Instruction *I : supergraph.Nodes) {
+      opSequence.push_back(I->getOpcodeName());
+  }
+  return opSequence;
+  }
+
 
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
@@ -126,10 +292,10 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
           if (auto *CI = dyn_cast<CallInst>(U)) {
             if (Function *called = CI->getCalledFunction()) {
               PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-              if (called->getName().startswith("llvm.var.annotation")) {
+              if (called->getName().starts_with("llvm.var.annotation")) {
                 StringRef annoStr = getAnnotationString(CI);
                 PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-                if (annoStr.startswith("secret")) {
+                if (annoStr.starts_with("secret")) {
                   PRINT("Found secret annotation directly on alloca.", LOW);
                   return true;
                 }
@@ -143,10 +309,10 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
               if (auto *CI = dyn_cast<CallInst>(V)) {
                 if (Function *called = CI->getCalledFunction()) {
                   PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                  if (called->getName().startswith("llvm.var.annotation")) {
+                  if (called->getName().starts_with("llvm.var.annotation")) {
                     StringRef annoStr = getAnnotationString(CI);
                     PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
-                    if (annoStr.startswith("secret")) {
+                    if (annoStr.starts_with("secret")) {
                       PRINT("Found secret annotation on bitcast.", LOW);
                       return true;
                     }
@@ -289,6 +455,7 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
         return PreservedAnalyses::all();
     }
 
+    std::vector<DataDependenceGraph> allDDGs;  // Anirudh: added this to store all DDGS before merging.
     BlockFrequencyAnalysis::Result &bfi = FAM.getResult<BlockFrequencyAnalysis>(F);
     LoopAnalysis::Result &li = FAM.getResult<LoopAnalysis>(F);
 
@@ -343,6 +510,7 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
             // Generate a filename that encodes the function name and branch.
             std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
             dumpDDG(ddg, FileName);
+            allDDGs.push_back(ddg); // Anirudh: Stores each ddg
           }
         }
       }
@@ -355,10 +523,46 @@ struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
           buildDDGForBasicBlock(succ, ddg, condInst);
           // Generate a filename that encodes the function name and the successor block.
           std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
-          dumpDDG(ddg, FileName);
+          dumpDDG(ddg, FileName); 
+          allDDGs.push_back(ddg); // Anirudh: Stores each ddg
         }
       }
 
+    }
+
+    SuperGraph supergraph = mergeDDGs(allDDGs);
+    dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
+
+    // Anirudh: This is the main dummy insertion loop
+    auto superGraphOps = extractSuperGraphOpSequence(supergraph);
+
+    for (auto &ddg : allDDGs) {
+        if (!ddg.Nodes.empty()) {
+            const Instruction *anyInst = *ddg.Nodes.begin();
+            BasicBlock *BB = const_cast<BasicBlock*>(anyInst->getParent());
+
+            IRBuilder<> Builder(&*BB->getFirstInsertionPt());
+            errs() << "Inserted dummy chain for block: " << BB->getName() << "\n";
+            buildStructuredDummyFlow(Builder, superGraphOps, ALL_DUMMY_OPERANDS); // Start with safe mode
+
+            // Anirudh: This is to verify that padding occurs and in correct amount
+            size_t realOpCount = 0;
+            for (const Instruction *I : ddg.Nodes) {
+                unsigned opcode = I->getOpcode();
+                if (Instruction::isBinaryOp(opcode) || isa<LoadInst>(I) || isa<StoreInst>(I) || isa<AllocaInst>(I)) {
+                    realOpCount++;
+                }
+            }
+
+            size_t dummyOpCount = superGraphOps.size() > realOpCount ? superGraphOps.size() - realOpCount : 0;
+            size_t superGraphOpCount = superGraphOps.size();
+
+            errs() << "Verification for DDG in block: " << BB->getName() << "\n";
+            errs() << "  Real Ops: " << realOpCount << "\n";
+            errs() << "  Dummy Ops: " << dummyOpCount << "\n";
+            errs() << "  SuperGraph Ops: " << superGraphOpCount << "\n";
+            assert(realOpCount + dummyOpCount == superGraphOpCount); // can remove previous statement. 
+        }
     }
 
     PRINT("End of Pass", HIGH);
@@ -387,4 +591,3 @@ extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo llvmGetPassPluginIn
     }
   };
 }
-
