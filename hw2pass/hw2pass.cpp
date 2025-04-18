@@ -242,6 +242,18 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
   }
 
 
+
+  // Ani B - snippet to run python script
+  void runPythonMergeScript(const std::string &searchPattern) {
+    std::string command = "python3 /n/eecs583b/home/anibhas/mirrormaze/hw2pass/merge_ddg.py " + searchPattern;
+    int ret = std::system(command.c_str());
+    if(ret != 0) {
+      llvm::errs() << "Error: Python merge_ddg.py script returned non-zero exit code: " << ret << "\n";
+    } else {
+      llvm::errs() << "Python merge_ddg.py script ran successfully. New file in " + searchPattern +"_supergraph.dot\n";
+    }
+  }
+
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
     Value *AnnoPtr = CI->getArgOperand(1);
@@ -530,7 +542,15 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
 
     }
 
-    SuperGraph supergraph = mergeDDGs(allDDGs);
+    // calling the python script to generate the supergraph
+    PRINT(F.getName().str(), LOW);
+
+    runPythonMergeScript(F.getName().str());
+
+    PRINT("End of Pass", HIGH);
+
+    // supergraph flow from here - ideally call it from from F.getName().str() + "_supergraph.dot"
+    SuperGraph supergraph; // = mergeDDGs(allDDGs);
     dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
 
     // Anirudh: This is the main dummy insertion loop
@@ -564,8 +584,6 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
             assert(realOpCount + dummyOpCount == superGraphOpCount); // can remove previous statement. 
         }
     }
-
-    PRINT("End of Pass", HIGH);
     return PreservedAnalyses::all();
   }
 };
