@@ -2,9 +2,10 @@ import sys
 import glob
 import networkx as nx
 from networkx.algorithms.similarity import optimize_graph_edit_distance
-from collections import defaultdict
+from collections import defaultdict, Counter
 import matplotlib.pyplot as plt
 import os
+import itertools
 # ani b - script right now just merges based on the labels - need to tweak it to generate the smallest common supergraph
 def normalize_label(label):
     """
@@ -32,11 +33,13 @@ def node_label_match(n1_attrs, n2_attrs):
     """Match nodes by label only, ignoring IDs"""
     return n1_attrs.get('label') == n2_attrs.get('label')
 
-def find_most_similar_graph(target_g, graph_list):
+def find_most_similar_graph(target_g, graph_list, target_g_idx):
     min_distance = float('inf')
     most_similar_idx = -1
     
     for i, graph in enumerate(graph_list):
+        if i == target_g_idx:
+            continue
         ged_gen = optimize_graph_edit_distance(
             target_g, graph,
             node_match=node_label_match,
@@ -48,9 +51,6 @@ def find_most_similar_graph(target_g, graph_list):
             
     return most_similar_idx, min_distance
 
-import networkx as nx
-from collections import defaultdict, Counter
-import itertools
 
 def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     merged = nx.DiGraph()
@@ -58,107 +58,106 @@ def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     # Index by label
     g1_label_index = defaultdict(list)
     g2_label_index = defaultdict(list)
-    
-    # Extract labels properly, handling potential string formatting
     for nid, data in g1.nodes(data=True):
-        label = normalize_label(data.get("label", ""))
+        label = normalize_label(data.get("label", str(nid)))
         g1_label_index[label].append(nid)
-    
     for nid, data in g2.nodes(data=True):
-        label = normalize_label(data.get("label", ""))
+        label = normalize_label(data.get("label", str(nid)))
         g2_label_index[label].append(nid)
-
-    # Match nodes by label
-    node_map = []  # tuples of (g1_id or None, g2_id or None, label)
+    
+    # Create node signatures based on connectivity
+    def get_signature(graph, node):
+        # Get predecessor and successor labels
+        pred_labels = Counter([normalize_label(graph.nodes[p].get("label", str(p))) for p in graph.predecessors(node)])
+        succ_labels = Counter([normalize_label(graph.nodes[s].get("label", str(s))) for s in graph.successors(node)])
+        return pred_labels, succ_labels
+    
+    # Calculate signatures for all nodes
+    g1_sigs = {nid: get_signature(g1, nid) for nid in g1.nodes()}
+    g2_sigs = {nid: get_signature(g2, nid) for nid in g2.nodes()}
+    
+    # Match nodes by label and signature similarity
+    node_map = []
     new_id_gen = itertools.count(start=1)
     label_set = set(g1_label_index) | set(g2_label_index)
-
-    for label in label_set:
+    
+    for label in sorted(label_set):
         g1_ids = g1_label_index.get(label, [])
         g2_ids = g2_label_index.get(label, [])
-
-        # Match as many as possible
-        for g1_id, g2_id in itertools.zip_longest(g1_ids, g2_ids):
-            node_id = next(new_id_gen)
-            if g1_id is not None and g2_id is not None:
-                origin = 'both'
-            elif g1_id is not None:
-                origin = 'g1_only'
-            elif g2_id is not None:
-                origin = 'g2_only'
-            else:
-                origin = 'new'  # shouldn't happen in zip_longest
-            merged.add_node(node_id, label=label, g1_id=g1_id, g2_id=g2_id, origin=origin)
-            node_map.append((label, g1_id, g2_id, node_id))
-
-    # Reverse maps: g1_id → merged_id, g2_id → merged_id
-    g1_to_merged = {g1: nid for (label, g1, _, nid) in node_map if g1 is not None}
-    g2_to_merged = {g2: nid for (label, _, g2, nid) in node_map if g2 is not None}
-
-    # Add edges from g1
-    for u, v, data in g1.edges(data=True):
-        u_m = g1_to_merged[u]
-        v_m = g1_to_merged[v]
-        if merged.has_edge(u_m, v_m):
-            merged[u_m][v_m]['from'].add('g1')
+        
+        if g1_ids and g2_ids:
+            # Calculate similarity scores for all pairs
+            scores = []
+            for g1_id in g1_ids:
+                g1_pred, g1_succ = g1_sigs[g1_id]
+                for g2_id in g2_ids:
+                    g2_pred, g2_succ = g2_sigs[g2_id]
+                    
+                    # Compute similarity based on shared connections
+                    pred_sim = sum((g1_pred & g2_pred).values())
+                    succ_sim = sum((g1_succ & g2_succ).values())
+                    score = pred_sim + succ_sim
+                    
+                    if score > 0:
+                        scores.append((score, g1_id, g2_id))
+            
+            # Sort by similarity score (highest first)
+            scores.sort(reverse=True)
+            
+            # Greedily match nodes
+            matched_g1 = set()
+            matched_g2 = set()
+            
+            for score, g1_id, g2_id in scores:
+                if g1_id not in matched_g1 and g2_id not in matched_g2:
+                    # Create a merged node for this match
+                    node_id = next(new_id_gen)
+                    merged.add_node(node_id, label=label, g1_id=g1_id, g2_id=g2_id, origin='both')
+                    node_map.append((g1_id, g2_id, node_id))
+                    matched_g1.add(g1_id)
+                    matched_g2.add(g2_id)
+            
+            # Add remaining unmatched nodes
+            for g1_id in g1_ids:
+                if g1_id not in matched_g1:
+                    node_id = next(new_id_gen)
+                    merged.add_node(node_id, label=label, g1_id=g1_id, g2_id=None, origin='g1_only')
+                    node_map.append((g1_id, None, node_id))
+            
+            for g2_id in g2_ids:
+                if g2_id not in matched_g2:
+                    node_id = next(new_id_gen)
+                    merged.add_node(node_id, label=label, g1_id=None, g2_id=g2_id, origin='g2_only')
+                    node_map.append((None, g2_id, node_id))
         else:
-           merged.add_edge(u_m, v_m, **{"from": {'g1'}})
-
-    # Add edges from g2
-    for u, v, data in g2.edges(data=True):
-        u_m = g2_to_merged[u]
-        v_m = g2_to_merged[v]
-        if merged.has_edge(u_m, v_m):
-            merged[u_m][v_m]['from'].add('g2')
+            # Add unmatched nodes from either graph
+            for g1_id in g1_ids:
+                node_id = next(new_id_gen)
+                merged.add_node(node_id, label=label, g1_id=g1_id, g2_id=None, origin='g1_only')
+                node_map.append((g1_id, None, node_id))
+            
+            for g2_id in g2_ids:
+                node_id = next(new_id_gen)
+                merged.add_node(node_id, label=label, g1_id=None, g2_id=g2_id, origin='g2_only')
+                node_map.append((None, g2_id, node_id))
+    
+    # Create reverse mappings
+    g1_to_merged = {g1_id: merged_id for (g1_id, _, merged_id) in node_map if g1_id is not None}
+    g2_to_merged = {g2_id: merged_id for (_, g2_id, merged_id) in node_map if g2_id is not None}
+    
+    # Add edges
+    for u, v in g1.edges:
+        merged.add_edge(g1_to_merged[u], g1_to_merged[v], **{"from": {'g1'}})
+    
+    for u, v in g2.edges:
+        u_merged = g2_to_merged[u]
+        v_merged = g2_to_merged[v]
+        if merged.has_edge(u_merged, v_merged):
+            merged[u_merged][v_merged]['from'].add('g2')
         else:
-            merged.add_edge(u_m, v_m, **{"from": {'g2'}})
-
+            merged.add_edge(u_merged, v_merged, **{"from": {'g2'}})
+    
     return merged
-
-
-def merge_ddg_dot_files(dot_files):
-    supergraph = nx.DiGraph()
-
-    # A mapping from normalized label -> node identifier in supergraph
-    node_map = {}
-
-    for dot_file in dot_files:
-        try:
-            # Read the DOT file via the pydot interface
-            g = nx.drawing.nx_pydot.read_dot(dot_file)
-        except Exception as e:
-            print(f"Error reading {dot_file}: {e}")
-            continue
-
-        # Process nodes: each node is keyed by its identifier in the DOT file,
-        # but we rely on the "label" attribute (normalized) as the unique key.
-        for node, attr in g.nodes(data=True):
-            raw_label = attr.get('label', '')
-            norm_label = normalize_label(raw_label)
-            if norm_label is None or norm_label == "":
-                # Skip nodes with empty labels.
-                continue
-            if norm_label not in node_map:
-                # Add the node using the normalized label as key.
-                supergraph.add_node(norm_label, label=norm_label)
-                node_map[norm_label] = norm_label
-
-        # Process edges: use normalized labels for both ends.
-        for u, v, attr in g.edges(data=True):
-            raw_u = g.nodes[u].get('label', '')
-            raw_v = g.nodes[v].get('label', '')
-            norm_u = normalize_label(raw_u)
-            norm_v = normalize_label(raw_v)
-            # Only process this edge if both endpoints have non-empty normalized labels.
-            if norm_u is None or norm_v is None or norm_u == "" or norm_v == "":
-                continue
-            # Ensure both nodes have already been added to the supergraph.
-            if norm_u in node_map and norm_v in node_map:
-                # Add the edge only if it doesn't already exist.
-                if not supergraph.has_edge(norm_u, norm_v):
-                    supergraph.add_edge(norm_u, norm_v, **attr)
-
-    return supergraph
 
 def visualize_graph(graph, title, output_path=None):
     """
@@ -311,10 +310,9 @@ def main():
         graphs.pop(0)
     else:
         target_graph = graphs[target_graph_index]
-        graphs.pop(target_graph_index)
-        print(f"Target graph: {target_graph_index}")
-        most_similar_idx, min_distance = find_most_similar_graph(target_graph, graphs)
-        print(f"Most similar graph: {most_similar_idx}, distance: {min_distance}")
+        print(f"g1: {target_graph_index}")
+        most_similar_idx, min_distance = find_most_similar_graph(target_graph, graphs, target_graph_index)
+        print(f"g2: {most_similar_idx}, distance: {min_distance}")
         merged_graph = build_merged_graph(target_graph, graphs[most_similar_idx])
         output_file = f"{search_pattern}_merged_ddg_{most_similar_idx}.dot"
         nx.drawing.nx_pydot.write_dot(merged_graph, output_file)
