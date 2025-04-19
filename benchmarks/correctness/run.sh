@@ -7,7 +7,8 @@
 PATH2LIB=../../build/hw2pass/HW2Pass.so       # Specify your build directory in the project
 
 # ACTION NEEDED: Choose the correct pass when running.
-PASS=fplicm-correctness                   # Choose either -fplicm-correctness ...
+PASS1=stacked                   # Choose either -fplicm-correctness ...
+PASS2=merged                  # Choose either -fplicm-correctness ...
 # PASS=fplicm-performance                 # ... or -fplicm-performance
 
 # Delete outputs from previous runs. Update this when you want to retain some files.
@@ -40,37 +41,34 @@ opt -passes="pgo-instr-use" -o ${1}.profdata.bc -pgo-test-profile-file=${1}.prof
 echo "Before plugin load"
 
 # We now use the profile augmented bc file as input to your pass.
-opt -load-pass-plugin="${PATH2LIB}" -passes="${PASS}" ${1}.profdata.bc -o ${1}.fplicm.bc > /dev/null
+opt -load-pass-plugin="${PATH2LIB}" -passes="${PASS1}" ${1}.profdata.bc -o ${1}.${PASS1}.bc > /dev/null
+opt -load-pass-plugin="${PATH2LIB}" -passes="${PASS2}" ${1}.profdata.bc -o ${1}.${PASS2}.bc > /dev/null
 
 # Generate binary excutable before FPLICM: Unoptimzed code
-clang ${1}.ls.bc -o ${1}_no_fplicm 
+clang ${1}.ls.bc -o ${1}_base
 # Generate binary executable after FPLICM: Optimized code
-clang ${1}.fplicm.bc -o ${1}_fplicm
+clang ${1}.${PASS1}.bc -o ${1}_${PASS1}
+clang ${1}.${PASS2}.bc -o ${1}_${PASS2}
 
 # Produce output from binary to check correctness
-./${1}_fplicm > fplicm_output
+./${1}_${PASS1} > ${PASS1}_output
+./${1}_${PASS2} > ${PASS2}_output
 
-echo -e "\n=== Program Correctness Validation ==="
-if [ "$(diff correct_output fplicm_output)" != "" ]; then
-    echo -e ">> Outputs do not match\n"
+echo "\n=== Program Correctness Validation ==="
+if [ "$(diff correct_output ${PASS1}_output)" != "" ]; then
+    echo ">> Outputs do not match ${PASS1}\n"
 else
-    echo -e ">> Outputs match\n"
-    # Measure performance
-    echo -e "1. Performance of unoptimized code"
-    time ./${1}_no_fplicm > /dev/null
-    echo -e "\n\n"
-    echo -e "2. Performance of optimized code"
-    time ./${1}_fplicm > /dev/null
-    echo -e "\n\n"
+    echo ">> Outputs match ${PASS1}\n"
+fi
+if [ "$(diff correct_output ${PASS2}_output)" != "" ]; then
+    echo ">> Outputs do not match ${PASS2}\n"
+else
+    echo ">> Outputs match ${PASS2}\n"
 fi
 
-# Repeat profiling for viz script
-opt -passes='pgo-instr-gen,instrprof' ${1}.fplicm.bc -o ${1}.fplicm.prof.bc
-clang -fprofile-instr-generate ${1}.fplicm.prof.bc -o ${1}_newprof
-./${1}_newprof > newfound_output
-llvm-profdata merge -o ${1}.profdata.new default.profraw
-opt -passes="pgo-instr-use" -o ${1}.profdata.new.bc -pgo-test-profile-file=${1}.profdata.new < ${1}.fplicm.prof.bc > /dev/null
+echo ">> Starting benchmarking. If hyperfine is not installed, following will fail. Ignore if you are not benchmarking\n"
 
-# Cleanup: Remove this if you want to retain the created files (for example, for viz.sh). 
-# And you do need to.
+hyperfine --min-runs 10000 --export-csv base.csv ./${1}_base ./${1}_${PASS1} ./${1}_${PASS2} --export-json ${1}_perf.json --warmup 20
 
+# After all runs done, run:
+# python3 stats.py <benchmark1>_perf.json <benchmark2>_perf.json <benchmark3>_perf.json <benchmark4>_perf.json <benchmark5>_perf.json -o plot --title "Performance Benchmarking" --labels "Unobfuscated","Stacked","Merged"
