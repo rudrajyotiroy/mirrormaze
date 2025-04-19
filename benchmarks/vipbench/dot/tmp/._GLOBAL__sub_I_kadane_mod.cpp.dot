@@ -1,0 +1,5 @@
+digraph "CFG for '_GLOBAL__sub_I_kadane_mod.cpp' function" {
+	label="CFG for '_GLOBAL__sub_I_kadane_mod.cpp' function";
+
+	Node0x5636e69a85f0 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{entry:\l|  %pgocount1 = load i64, ptr\l... @__profc_kadane_mod.cpp__GLOBAL__sub_I_kadane_mod.cpp.10, align 8, !dbg !903\l  %0 = add i64 %pgocount1, 1, !dbg !903\l  store i64 %0, ptr @__profc_kadane_mod.cpp__GLOBAL__sub_I_kadane_mod.cpp.10,\l... align 8, !dbg !903\l  %pgocount = load i64, ptr\l... @__profc_kadane_mod.cpp__GLOBAL__sub_I_kadane_mod.cpp, align 8, !dbg !903\l  %1 = add i64 %pgocount, 1, !dbg !903\l  store i64 %1, ptr @__profc_kadane_mod.cpp__GLOBAL__sub_I_kadane_mod.cpp,\l... align 8, !dbg !903\l  call void @__cxx_global_var_init(), !dbg !903\l  ret void\l}"];
+}

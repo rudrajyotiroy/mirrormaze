@@ -1,0 +1,5 @@
+digraph "CFG for 'main' function" {
+	label="CFG for 'main' function";
+
+	Node0x564268dfa660 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{entry:\l|  %pgocount1 = load i64, ptr @__profc_main.58, align 8\l  %0 = add i64 %pgocount1, 1\l  store i64 %0, ptr @__profc_main.58, align 8\l  %pgocount = load i64, ptr @__profc_main, align 8\l  %1 = add i64 %pgocount, 1\l  store i64 %1, ptr @__profc_main, align 8\l  %retval = alloca i32, align 4\l  store i32 0, ptr %retval, align 4\l  %2 = load ptr, ptr @stdout, align 8, !dbg !13060\l  %call = call i32 (ptr, ptr, ...) @fprintf(ptr noundef %2, ptr noundef\l... @.str.5), !dbg !13061\l  call void\l... @_Z23FindDistanceWithinArrayRSt6vectorINSt7__cxx1112basic_stringIcSt11char_tra\l...itsIcESaIcEEESaIS5_EE(ptr noundef nonnull align 8 dereferenceable(24)\l... @_Z8random_sB5cxx11), !dbg !13062\l  ret i32 0, !dbg !13064\l}"];
+}
