@@ -51,7 +51,7 @@ enum ImportanceLevel {
 };
 
 // Change here
-#define VERBOSE HIGH
+#define VERBOSE MED
 
 #define PRINT(x, v)                           \
   do {                                        \
@@ -387,73 +387,108 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
     return false;
   }
 
-  std::set<Instruction*> runForwardTaintAnalysis(Function &F, std::set<const Value*> secretValues) {
+  std::set<Instruction*> runForwardTaintAnalysis(
+    Function &F,
+    std::set<const Value*> secretValues  // seeded with annotate("secret") values
+  ) {
     std::set<Instruction*> secretBranches;
-    // Propagation: iterate until no new secret values are discovered.
     bool changed = true;
+
     while (changed) {
       changed = false;
-      
-      // Iterate over all basic blocks and instructions.
+
       for (BasicBlock &BB : F) {
         for (Instruction &Inst : BB) {
-          // Skip if the instruction is already marked as secret.
+          // --- Backward propagation: if result is tainted, taint operands ---
+          if (auto *GEP = dyn_cast<GetElementPtrInst>(&Inst)) {
+            if (secretValues.count(&Inst)) {
+              Value *base = GEP->getPointerOperand();
+              if (secretValues.insert(base).second) {
+                errs() << "← Back-prop GEP base: " << *base << "\n";
+                changed = true;
+              }
+            }
+          }
+          if (auto *LI = dyn_cast<LoadInst>(&Inst)) {
+            if (secretValues.count(&Inst)) {
+              Value *addr = LI->getPointerOperand();
+              if (secretValues.insert(addr).second) {
+                errs() << "← Back-prop Load addr: " << *addr << "\n";
+                changed = true;
+              }
+            }
+          }
+          if (auto *BC = dyn_cast<BitCastInst>(&Inst)) {
+            if (secretValues.count(&Inst)) {
+              Value *src = BC->getOperand(0);
+              if (secretValues.insert(src).second) {
+                errs() << "← Back-prop BitCast src: " << *src << "\n";
+                changed = true;
+              }
+            }
+          }
+
+          // Skip if already tainted
           if (secretValues.count(&Inst))
             continue;
 
-          // Check each operand; if any operand is secret, taint this instruction.
-          bool tainted = false;
-          for (unsigned op = 0; op < Inst.getNumOperands(); ++op) {
-            if (secretValues.count(Inst.getOperand(op)) > 0) {
-              tainted = true;
+          // --- Forward propagation: if any operand is tainted, taint inst ---
+          for (unsigned i = 0, e = Inst.getNumOperands(); i < e; ++i) {
+            if (secretValues.count(Inst.getOperand(i))) {
+              secretValues.insert(&Inst);
+              errs() << "→ Tainted inst: " << Inst << "\n";
+              changed = true;
               break;
             }
           }
-          
-          // If the instruction is tainted, update secret values.
-          if (tainted) {
-            secretValues.insert(&Inst);
-            changed = true;
-            errs() << "Tainted value: " << Inst << "\n";
-            
-            // Special handling: if the tainted instruction is a branch or switch.
-            if (BranchInst *BI = dyn_cast<BranchInst>(&Inst)) {
-              // For branch instructions, check if it is conditional.
-              if (BI->isConditional()) {
-                secretBranches.insert(BI);
-                errs() << "Found secret branch: " << *BI << "\n";
-              }
-            } else if (SwitchInst *SI = dyn_cast<SwitchInst>(&Inst)) {
+
+          // --- Branch/Switch detection on tainted condition ---
+          if (auto *BI = dyn_cast<BranchInst>(&Inst)) {
+            if (BI->isConditional() && secretValues.count(BI->getCondition())) {
+              secretBranches.insert(BI);
+              errs() << "!!! Secret branch: " << *BI << "\n";
+            }
+          } else if (auto *SI = dyn_cast<SwitchInst>(&Inst)) {
+            if (secretValues.count(SI->getCondition())) {
               secretBranches.insert(SI);
-              errs() << "Found secret switch: " << *SI << "\n";
-            } else if (StoreInst *SI = dyn_cast<StoreInst>(&Inst)) {
-              // Check if the value being stored is secret.
-              if (secretValues.count(SI->getValueOperand()) > 0) {
-                Value *dest = SI->getPointerOperand();
-                // Only add if not already tainted.
-                if (secretValues.insert(dest).second) {
-                  changed = true;
-                  errs() << "Tainted destination: " << *dest << "\n";
-                }
+              errs() << "!!! Secret switch: " << *SI << "\n";
+            }
+          }
+
+          // --- Store of tainted value: taint the address operand ---
+          if (auto *ST = dyn_cast<StoreInst>(&Inst)) {
+            if (secretValues.count(ST->getValueOperand())) {
+              Value *addr = ST->getPointerOperand();
+              if (secretValues.insert(addr).second) {
+                errs() << "→ Tainted store-dest: " << *addr << "\n";
+                changed = true;
               }
+            }
+          }
+
+          // --- Load from tainted address: taint result ---
+          if (auto *LD = dyn_cast<LoadInst>(&Inst)) {
+            if (secretValues.count(LD->getPointerOperand())) {
+              secretValues.insert(&Inst);
+              errs() << "→ Tainted load result: " << Inst << "\n";
+              changed = true;
             }
           }
         }
       }
     }
 
-    // Optionally, output results.
-    errs() << "\nFinal set of secret values:\n";
-    for (const Value *V : secretValues) {
+    // Print final taints
+    errs() << "\n=== Final Secret Values ===\n";
+    for (auto *V : secretValues)
       errs() << *V << "\n";
-    }
-    errs() << "\nSecret branches/switches:\n";
-    for (const Instruction *I : secretBranches) {
+    errs() << "\n=== Secret Branches/Switches ===\n";
+    for (auto *I : secretBranches)
       errs() << *I << "\n";
-    }
 
     return secretBranches;
   }
+
 
   // Build the data-dependence graph for a given basic block.
     // For every instruction in the block, add an edge from an instruction defining a variable to
