@@ -44,6 +44,20 @@ echo "Before plugin load"
 opt -load-pass-plugin="${PATH2LIB}" -passes="${PASS1}" ${1}.profdata.bc -o ${1}.${PASS1}.bc > /dev/null
 opt -load-pass-plugin="${PATH2LIB}" -passes="${PASS2}" ${1}.profdata.bc -o ${1}.${PASS2}.bc > /dev/null
 
+# Vizualise all 3
+opt -passes="dot-cfg" ${1}.ls.bc -cfg-dot-filename-prefix=vizdot.${1}.base -disable-output
+opt -passes="dot-cfg" ${1}.${PASS1}.bc -cfg-dot-filename-prefix=vizdot.${1}.${PASS1} -disable-output
+opt -passes="dot-cfg" ${1}.${PASS2}.bc -cfg-dot-filename-prefix=vizdot.${1}.${PASS2} -disable-output
+
+for DOT_FILE in vizdot.*.dot; do
+  # Extract the base name without the .dot extension
+  BASE_NAME="${DOT_FILE%.dot}"
+  
+  # Use dot to generate a PDF with the same name as the .dot file
+  dot -Tpdf "$DOT_FILE" -o dot_visualizations/$BASE_NAME.pdf
+done
+
+
 # Generate binary excutable before FPLICM: Unoptimzed code
 clang ${1}.ls.bc -o ${1}_base
 # Generate binary executable after FPLICM: Optimized code
@@ -68,7 +82,7 @@ fi
 
 echo ">> Starting benchmarking. If hyperfine is not installed, following will fail. Ignore if you are not benchmarking\n"
 
-hyperfine --min-runs 10000 --export-csv base.csv ./${1}_base ./${1}_${PASS1} ./${1}_${PASS2} --export-json ${1}_perf.json --warmup 20
+hyperfine --min-runs 10000 --export-csv base.csv ./${1}_base ./${1}_${PASS1} ./${1}_${PASS2} --export-json ${1}_perf.json --warmup 1000
 
 # After all runs done, run:
 # python3 stats.py <benchmark1>_perf.json <benchmark2>_perf.json <benchmark3>_perf.json <benchmark4>_perf.json <benchmark5>_perf.json -o plot --title "Performance Benchmarking" --labels "Unobfuscated","Stacked","Merged"

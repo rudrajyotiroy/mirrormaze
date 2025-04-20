@@ -18,6 +18,7 @@ Quoting from the matplotlib documentation:
 import argparse
 import json
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -35,6 +36,15 @@ all_times = []
 all_labels = []
 all_file_names = []
 
+def remove_outliers(data):
+    """Remove outliers using the IQR method"""
+    q1 = np.percentile(data, 25)
+    q3 = np.percentile(data, 75)
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    return [x for x in data if lower_bound <= x <= upper_bound]
+
 for file in args.files:
     with open(file, encoding="utf-8") as f:
         results = json.load(f)["results"]
@@ -47,8 +57,11 @@ for file in args.files:
     
     times = [b["times"] for b in results]
 
+    # Remove outliers from each dataset before plotting
+    times = [remove_outliers(time_data) for time_data in times]
+
     if args.sort_by == "median":
-        medians = [b["median"] for b in results]
+        medians = [np.median(time_data) for time_data in times]
         indices = sorted(range(len(labels)), key=lambda k: medians[k])
         labels = [labels[i] for i in indices]
         times = [times[i] for i in indices]

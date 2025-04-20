@@ -51,7 +51,7 @@ enum ImportanceLevel {
 };
 
 // Change here
-#define VERBOSE ALL 
+#define VERBOSE HIGH
 
 #define PRINT(x, v)                           \
   do {                                        \
@@ -232,7 +232,7 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
 
         
         for (const auto &opcode : superGraphOps) {
-            errs() << "  Dummy operation: " << opcode << "\n";
+            PRINT(llvm::Twine("Dummy operation: ") + opcode, LOW);
         }
 
     }
@@ -253,7 +253,7 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
 
   // Ani B - snippet to run python script
   void runPythonMergeScript(const std::string &searchPattern, size_t secretGraphIndex) {
-    std::string command = "python3  ../../hw2pass/merge_ddg.py " + searchPattern;
+    std::string command = "python3 ../../hw2pass/merge_ddg.py " + searchPattern;
         // + " " + std::to_string(secretGraphIndex);
     int ret = std::system(command.c_str());
     if(ret != 0) {
@@ -352,10 +352,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
           if (auto *CI = dyn_cast<CallInst>(U)) {
             if (Function *called = CI->getCalledFunction()) {
               PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-              if (called->getName().starts_with("llvm.var.annotation")) {
+              if (called->getName().startswith("llvm.var.annotation")) {
                 StringRef annoStr = getAnnotationString(CI);
                 PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-                if (annoStr.starts_with("secret")) {
+                if (annoStr.startswith("secret")) {
                   PRINT("Found secret annotation directly on alloca.", LOW);
                   return true;
                 }
@@ -369,10 +369,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
               if (auto *CI = dyn_cast<CallInst>(V)) {
                 if (Function *called = CI->getCalledFunction()) {
                   PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                  if (called->getName().starts_with("llvm.var.annotation")) {
+                  if (called->getName().startswith("llvm.var.annotation")) {
                     StringRef annoStr = getAnnotationString(CI);
                     PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
-                    if (annoStr.starts_with("secret")) {
+                    if (annoStr.startswith("secret")) {
                       PRINT("Found secret annotation on bitcast.", LOW);
                       return true;
                     }

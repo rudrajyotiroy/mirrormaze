@@ -1,6 +1,0 @@
-digraph DDG {
-  "0x55dd6b2db020" [label="  %14 = load i64, i64* %result, align 8, !dbg !326"];
-  "0x55dd6b2db0c0" [label="  ret i64 %14, !dbg !327"];
-  "0x55dd6b2d9eb0" -> "0x55dd6b2db020";
-  "0x55dd6b2db020" -> "0x55dd6b2db0c0";
-}
