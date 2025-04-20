@@ -52,6 +52,10 @@ def find_most_similar_graph(target_g, graph_list, target_g_idx):
     return most_similar_idx, min_distance
 
 
+import networkx as nx
+from collections import defaultdict, Counter
+import itertools
+
 def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     merged = nx.DiGraph()
 
@@ -59,17 +63,17 @@ def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     g1_label_index = defaultdict(list)
     g2_label_index = defaultdict(list)
     for nid, data in g1.nodes(data=True):
-        label = normalize_label(data.get("label", str(nid)))
+        label = data.get("label", str(nid))  # Use node ID as default if label is missing
         g1_label_index[label].append(nid)
     for nid, data in g2.nodes(data=True):
-        label = normalize_label(data.get("label", str(nid)))
+        label = data.get("label", str(nid))  # Use node ID as default if label is missing
         g2_label_index[label].append(nid)
     
     # Create node signatures based on connectivity
     def get_signature(graph, node):
         # Get predecessor and successor labels
-        pred_labels = Counter([normalize_label(graph.nodes[p].get("label", str(p))) for p in graph.predecessors(node)])
-        succ_labels = Counter([normalize_label(graph.nodes[s].get("label", str(s))) for s in graph.successors(node)])
+        pred_labels = Counter([graph.nodes[p].get("label", str(p)) for p in graph.predecessors(node)])
+        succ_labels = Counter([graph.nodes[s].get("label", str(s)) for s in graph.successors(node)])
         return pred_labels, succ_labels
     
     # Calculate signatures for all nodes
@@ -93,13 +97,15 @@ def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
                 for g2_id in g2_ids:
                     g2_pred, g2_succ = g2_sigs[g2_id]
                     
-                    # Compute similarity based on shared connections
+                    # Give a base score of 1 for same label - ensures isolated nodes match
+                    score = 1
+                    
+                    # Add connectivity similarity for additional matching precision
                     pred_sim = sum((g1_pred & g2_pred).values())
                     succ_sim = sum((g1_succ & g2_succ).values())
-                    score = pred_sim + succ_sim
+                    score += pred_sim + succ_sim
                     
-                    if score > 0:
-                        scores.append((score, g1_id, g2_id))
+                    scores.append((score, g1_id, g2_id))
             
             # Sort by similarity score (highest first)
             scores.sort(reverse=True)
@@ -145,19 +151,26 @@ def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     g1_to_merged = {g1_id: merged_id for (g1_id, _, merged_id) in node_map if g1_id is not None}
     g2_to_merged = {g2_id: merged_id for (_, g2_id, merged_id) in node_map if g2_id is not None}
     
-    # Add edges
+    # Add edges from g1
     for u, v in g1.edges:
-        merged.add_edge(g1_to_merged[u], g1_to_merged[v], **{"from": {'g1'}})
-    
-    for u, v in g2.edges:
-        u_merged = g2_to_merged[u]
-        v_merged = g2_to_merged[v]
-        if merged.has_edge(u_merged, v_merged):
-            merged[u_merged][v_merged]['from'].add('g2')
+        u_m = g1_to_merged[u]
+        v_m = g1_to_merged[v]
+        if merged.has_edge(u_m, v_m):
+            merged[u_m][v_m]['source'].add('g1')
         else:
-            merged.add_edge(u_merged, v_merged, **{"from": {'g2'}})
+            merged.add_edge(u_m, v_m, source={'g1'})
+    
+    # Add edges from g2
+    for u, v in g2.edges:
+        u_m = g2_to_merged[u]
+        v_m = g2_to_merged[v]
+        if merged.has_edge(u_m, v_m):
+            merged[u_m][v_m]['source'].add('g2')
+        else:
+            merged.add_edge(u_m, v_m, source={'g2'})
     
     return merged
+
 
 def visualize_graph(graph, title, output_path=None):
     """
