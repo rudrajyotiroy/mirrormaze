@@ -171,7 +171,6 @@ def build_merged_graph(g1: nx.DiGraph, g2: nx.DiGraph):
     
     return merged
 
-
 def visualize_graph(graph, title, output_path=None):
     """
     Visualize a graph and save it as an image with clear directed edges.
@@ -319,20 +318,66 @@ def main():
     # Process graphs for merging
     if target_graph_index is None:
         # target graph is smallest graph
-        target_graph = graphs[0]
-        graphs.pop(0)
+        # target_graph = graphs[0]
+        # graphs.pop(0)
+
+
+        sizes = [g.number_of_nodes() for g in graphs]
+        smallest_idx = sizes.index(min(sizes))
+        target_graph = graphs.pop(smallest_idx)
+        print(f"Starting with smallest DDG index={smallest_idx}, size={sizes[smallest_idx]}")
+
     else:
-        target_graph = graphs[target_graph_index]
-        print(f"g1: {target_graph_index}")
-        most_similar_idx, min_distance = find_most_similar_graph(target_graph, graphs, target_graph_index)
-        print(f"g2: {most_similar_idx}, distance: {min_distance}")
+        # target_graph = graphs[target_graph_index]
+        # print(f"g1: {target_graph_index}")  
+        
+        # most_similar_idx, min_distance = find_most_similar_graph(target_graph, graphs, target_graph_index)
+        # print(f"g2: {most_similar_idx}, distance: {min_distance}")
+        # merged_graph = build_merged_graph(target_graph, graphs[most_similar_idx])
+        # output_file = f"{search_pattern}_merged_ddg_{most_similar_idx}.dot"
+        # nx.drawing.nx_pydot.write_dot(merged_graph, output_file)
+        # print(f"Merged graph written to {output_file}")
+
+        target_graph = graphs.pop(target_graph_index)
+        print(f"Starting with user‑provided DDG index={target_graph_index}")
+
+    step = 0
+    while graphs:
+        most_similar_idx, min_distance = find_most_similar_graph(target_graph, graphs, -1)
+        print(f"[step {step}] merging (current size={target_graph.number_of_nodes()}) "
+              f"with graphs[{most_similar_idx}] (size={graphs[most_similar_idx].number_of_nodes()}), "
+              f"distance={min_distance}")
+
         merged_graph = build_merged_graph(target_graph, graphs[most_similar_idx])
         output_file = f"{search_pattern}_merged_ddg_{most_similar_idx}.dot"
         nx.drawing.nx_pydot.write_dot(merged_graph, output_file)
         print(f"Merged graph written to {output_file}")
-    
-    # Visualize all the original graphs
-    visualize_all_graphs(all_graphs, search_pattern, output_dir="graph_visualizations", merged_graph=merged_graph)
+
+        # visualize this step
+        # visualize_all_graphs(
+        #     all_graphs,
+        #     search_pattern,
+        #     output_dir=f"graph_visualizations_step{step}",
+        #     merged_graph=merged_graph
+        # )
+
+        # prepare for next iteration
+        target_graph = merged_graph
+        graphs.pop(most_similar_idx)
+        step += 1
+
+    # final supergraph
+    final_dot = f"{search_pattern}_supergraph.dot"
+    nx.drawing.nx_pydot.write_dot(target_graph, final_dot)
+    print(f"Final supergraph written to {final_dot}")
+
+    # final visualization
+    visualize_all_graphs(
+        all_graphs,
+        search_pattern,
+        output_dir="graph_visualizations",
+        merged_graph=target_graph
+    )
 
 if __name__ == "__main__":
     main()
