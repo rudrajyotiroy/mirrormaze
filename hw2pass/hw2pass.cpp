@@ -5,6 +5,11 @@
 // Progress : Attribute Detection, Taint Analysis, DDG generation
 
 #include <iostream>
+#include <string>
+#include <fstream> 
+#include <vector>
+#include <sstream>
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
@@ -45,7 +50,6 @@ enum ImportanceLevel {
     ALL  = 4   // All messages are logged.
 };
 
-
 // Change here
 #define VERBOSE ALL 
 
@@ -65,9 +69,9 @@ using CondInstInfo = std::pair<const Instruction*, std::vector<const BasicBlock*
 namespace {
 
 struct HW2CorrectnessPass : public PassInfoMixin<HW2CorrectnessPass> {
-public:
+  public:
   // Constructor accepting an argument
-  HW2CorrectnessPass(bool option) : optimizeSupergraph_(option) {}
+    HW2CorrectnessPass(bool option) : optimizeSupergraph_(option) {}
 
   // Anirudh : I am currently implementing 1 , can do 2 . Just making code much cleaner
   enum DummyMode { ALL_DUMMY_OPERANDS, MIXED_OPERANDS };
@@ -248,15 +252,55 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
 
 
   // Ani B - snippet to run python script
-  void runPythonMergeScript(const std::string &searchPattern) {
-    std::string command = "python3 ../../hw2pass/merge_ddg.py " + searchPattern;
+  void runPythonMergeScript(const std::string &searchPattern, size_t secretGraphIndex) {
+    std::string command = "python3  ../../hw2pass/merge_ddg.py " + searchPattern;
+        // + " " + std::to_string(secretGraphIndex);
     int ret = std::system(command.c_str());
     if(ret != 0) {
       llvm::errs() << "Error: Python merge_ddg.py script returned non-zero exit code: " << ret << "\n";
     } else {
-      llvm::errs() << "Python merge_ddg.py script ran successfully. New file in " + searchPattern +"_supergraph.dot\n";
+      llvm::errs() << "Python merge_ddg.py script ran successfully. New file in " + searchPattern +"_supergraph.dot" + " with secret index=" << secretGraphIndex << "\n";
     }
   }
+
+  static std::vector<std::string> parseSupergraphDot(const std::string &dotPath) {
+  std::vector<std::string> opSeq;
+  std::ifstream in(dotPath);
+  if (!in.is_open()) {
+    errs() << "Could not open supergraph file: " << dotPath << "\n";
+    return opSeq;
+  }
+
+  std::string line;
+  while (std::getline(in, line)) {
+    auto p = line.find("label=\"");
+    if (p == std::string::npos) continue;
+    p += 7;
+    auto q = line.find('"', p);
+    if (q == std::string::npos) continue;
+    std::string lbl = line.substr(p, q - p);
+    // Skip raw addresses
+    if (lbl.rfind("0x",0) == 0) continue;
+
+    // If label contains '=', parse "<dst> = <opcode> ..."
+    auto eqpos = lbl.find('=');
+    if (eqpos != std::string::npos) {
+      std::istringstream iss(lbl);
+      std::string dst, eq, opcode;
+      if ((iss >> dst >> eq >> opcode) && eq == "=") {
+        opSeq.push_back(opcode);
+      } else {
+        errs() << "Skipping unparsable label: " << lbl << "\n";
+      }
+    } else {
+      // No '=', so treat entire label as the opcode
+      opSeq.push_back(lbl);
+    }
+  }
+
+  return opSeq;
+}
+
 
   static StringRef getAnnotationString(CallInst *CI) {
     // The second operand of llvm.var.annotation is the annotation string.
@@ -308,10 +352,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
           if (auto *CI = dyn_cast<CallInst>(U)) {
             if (Function *called = CI->getCalledFunction()) {
               PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-              if (called->getName().startswith("llvm.var.annotation")) {
+              if (called->getName().starts_with("llvm.var.annotation")) {
                 StringRef annoStr = getAnnotationString(CI);
                 PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-                if (annoStr.startswith("secret")) {
+                if (annoStr.starts_with("secret")) {
                   PRINT("Found secret annotation directly on alloca.", LOW);
                   return true;
                 }
@@ -325,10 +369,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
               if (auto *CI = dyn_cast<CallInst>(V)) {
                 if (Function *called = CI->getCalledFunction()) {
                   PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                  if (called->getName().startswith("llvm.var.annotation")) {
+                  if (called->getName().starts_with("llvm.var.annotation")) {
                     StringRef annoStr = getAnnotationString(CI);
                     PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
-                    if (annoStr.startswith("secret")) {
+                    if (annoStr.starts_with("secret")) {
                       PRINT("Found secret annotation on bitcast.", LOW);
                       return true;
                     }
@@ -465,14 +509,13 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
     }
 
   PreservedAnalyses run(Function &F, FunctionAnalysisManager &FAM) {
-    
+
     // Use optimizeSupergraph_ as control to determine if supergraph should be optimized
     if(optimizeSupergraph_) {
       PRINT(llvm::Twine("====> Optimize the supergraph formation\n "), HIGH);
     } else {
       PRINT(llvm::Twine("====> Skip supergraph optimization\n "), HIGH);
     }
-
     if (F.getName() == "main"){
         PRINT(llvm::Twine("Skipping function ") + F.getName(), HIGH);
         return PreservedAnalyses::all();
@@ -508,6 +551,13 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
       return PreservedAnalyses::all();
     }
 
+    // additions by Ani b 
+    const Instruction *originalSecretInst = *secretBranches.begin();
+
+    size_t secretGraphIdx = SIZE_MAX;
+    size_t ddgIdx         = 0;
+    bool   found          = false;
+  
     for (auto condInst : secretBranches) {
       // If the branch is an if–else, there are two successors.
       PRINT(("Onto condition..."), LOW);
@@ -534,6 +584,13 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
             std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
             dumpDDG(ddg, FileName);
             allDDGs.push_back(ddg); // Anirudh: Stores each ddg
+
+             // additions by Ani b 
+            if (!found && condInst == originalSecretInst){
+              secretGraphIdx = ddgIdx;
+              found = true;
+            }
+            ++ddgIdx;
           }
         }
       }
@@ -548,6 +605,13 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
           std::string FileName = F.getName().str() + "_ddg_" + succ->getName().str() + ".dot";
           dumpDDG(ddg, FileName); 
           allDDGs.push_back(ddg); // Anirudh: Stores each ddg
+
+           // additions by Ani b 
+          if (!found && condInst == originalSecretInst){
+            secretGraphIdx = ddgIdx;
+            found = true;
+          }
+          ++ddgIdx;
         }
       }
 
@@ -556,16 +620,24 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
     // calling the python script to generate the supergraph
     PRINT(F.getName().str(), LOW);
 
-    runPythonMergeScript(F.getName().str());
+    PRINT(secretGraphIdx, LOW);
+
+    runPythonMergeScript(F.getName().str(), secretGraphIdx);
 
     PRINT("End of Pass", HIGH);
 
     // supergraph flow from here - ideally call it from from F.getName().str() + "_supergraph.dot"
-    SuperGraph supergraph; // = mergeDDGs(allDDGs);
-    dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
+    std::string superDot = F.getName().str() + "_supergraph.dot";
+    auto superGraphOps = parseSupergraphDot(superDot);
+    if (superGraphOps.empty()) {
+        errs() << "Warning: no opcodes parsed from " << superDot << "\n";
+    }
+
+    // SuperGraph supergraph = mergeDDGs(allDDGs);
+    // dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
 
     // Anirudh: This is the main dummy insertion loop
-    auto superGraphOps = extractSuperGraphOpSequence(supergraph);
+    // auto superGraphOps = extractSuperGraphOpSequence(supergraph);
 
     for (auto &ddg : allDDGs) {
         if (!ddg.Nodes.empty()) {
@@ -597,7 +669,7 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
     }
     return PreservedAnalyses::all();
   }
-private:
+  private:
   bool optimizeSupergraph_;
 };
 
