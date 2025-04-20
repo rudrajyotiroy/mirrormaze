@@ -137,7 +137,7 @@ public:
   
     file << "digraph SuperGraph {\n";
     for (const Instruction *I : supergraph.Nodes) {
-      file << "  \"" << I << "\" [label=\"" << *I << "\"];\n";
+      file << "  \"" << I << "\" [label=\"" << I->getOpcodeName() << "\"];\n";
     }
     for (auto &pair : supergraph.Edges) {
       const Instruction *From = pair.first;
@@ -451,7 +451,7 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
       // For each node, write out a node label.
       for (const Instruction *I : ddg.Nodes) {
         // We use the pointer value as the node identifier and print the instruction as its label.
-        file << "  \"" << I << "\" [label=\"" << *I << "\"];\n";
+        file << "  \"" << I << "\" [label=\"" << I->getOpcodeName() << "\"];\n";
       }
       // Output all edges.
       for (auto &pair : ddg.Edges) {
