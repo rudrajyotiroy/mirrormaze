@@ -5,4 +5,6 @@ build/**
 *_newprof
 *.bc
 benchmarks/correctness/*
+!benchmarks/correctness/*.py
+!benchmarks/correctness/*.png
 !benchmarks/correctness/*.c*
