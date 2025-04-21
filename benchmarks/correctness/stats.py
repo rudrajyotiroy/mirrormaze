@@ -92,8 +92,12 @@ plt.figure(figsize=(12, 6), constrained_layout=True)
 boxplot = plt.boxplot(flat_times, positions=positions, vert=True, patch_artist=True)
 
 # Assign colors for each box plot based on the labels
-for patch, label in zip(boxplot["boxes"], flat_times):
-    label_idx = flat_times.index(label)
+# for patch, label in zip(boxplot["boxes"], flat_times):
+#     label_idx = flat_times.index(label)
+#     patch.set_facecolor(color_map[all_labels[label_idx]])
+
+for i, patch in enumerate(boxplot["boxes"]):
+    label_idx = i % len(all_labels)  # This ensures you cycle through all labels
     patch.set_facecolor(color_map[all_labels[label_idx]])
 
 # Set the labels and title

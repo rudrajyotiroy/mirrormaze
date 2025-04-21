@@ -88,7 +88,8 @@ void withdraw(BankAccount *account __attribute((annotate("secret"))), double amo
 // If the source account has sufficient funds (balance >= amount + fee),
 // the amount plus fee is deducted from source and the amount is added to destination.
 // Otherwise, a fixed penalty is deducted from the source and the transfer does not occur.
-void transferFunds(BankAccount *source __attribute((annotate("secret"))), BankAccount *destination __attribute((annotate("secret"))), double amount) {
+void transferFunds( BankAccount *source __attribute((annotate("secret"))), 
+                    BankAccount *destination __attribute((annotate("secret"))), double amount) {
     if (amount <= 0) {
         printf("Transfer amount must be positive.\n");
         return;
@@ -98,12 +99,8 @@ void transferFunds(BankAccount *source __attribute((annotate("secret"))), BankAc
     if (source->balance >= amount) {
         source->balance -= amount*(1 + fee);
         destination->balance += amount;
-        // printf("Transferred $%.2f (fee: $%.2f) from account %s to account %s\n", 
-        //        amount, fee, source->accountNumber, destination->accountNumber);
     } else {
         source->balance -= PENALTY;
-        // printf("Insufficient funds for transfer from account %s. Penalty of $%.2f charged.\n", 
-        //        source->accountNumber, PENALTY);
     }
 }
 
@@ -156,7 +153,7 @@ int main(void) {
 
     // --- Demo run: Execute about 100 operations ---
     printf("\nStarting demo run with 100 operations...\n\n");
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < 10000; i++) {
         // Cycle through different operations based on the loop index.
         if (i % 4 == 0) {
             // Deposit into account ACC1001.

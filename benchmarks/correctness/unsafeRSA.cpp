@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-
+#define ITER 50000
 /*
  * modexp() computes (base^exp) mod mod using the “square and multiply”
  * algorithm. This implementation uses a branch inside the loop (the if
@@ -41,21 +41,23 @@ int main() {
     unsigned long long plaintext = 65; // For example, the ASCII code for 'A'
     
     // RSA encryption: ciphertext = plaintext^e mod n
-    unsigned long long ciphertext = modexp(plaintext, e, n);
+    for (int i = 0; i < ITER; i++){
+        unsigned long long ciphertext = modexp(plaintext, e, n);
     
-    // RSA decryption: decrypted text = ciphertext^d mod n
-    unsigned long long decrypted = modexp(ciphertext, d, n);
+        // RSA decryption: decrypted text = ciphertext^d mod n
+        unsigned long long decrypted = modexp(ciphertext, d, n);
+    }
 
     printf("RSA Branch Unsafe Example\n");
-    printf("Plaintext : %llu\n", plaintext);
-    printf("Ciphertext: %llu\n", ciphertext);
-    printf("Decrypted : %llu\n", decrypted);
+    // printf("Plaintext : %llu\n", plaintext);
+    // printf("Ciphertext: %llu\n", ciphertext);
+    // printf("Decrypted : %llu\n", decrypted);
 
-    if(plaintext == decrypted) {
-        printf("Success: Decrypted text matches plaintext.\n");
-    } else {
-        printf("Error: Decryption failed.\n");
-    }
+    // if(plaintext == decrypted) {
+    //     printf("Success: Decrypted text matches plaintext.\n");
+    // } else {
+    //     printf("Error: Decryption failed.\n");
+    // }
     
     return 0;
 }
