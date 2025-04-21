@@ -352,10 +352,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
           if (auto *CI = dyn_cast<CallInst>(U)) {
             if (Function *called = CI->getCalledFunction()) {
               PRINT(llvm::Twine("Found call instruction: ") + called->getName(), LOW);
-              if (called->getName().startswith("llvm.var.annotation")) {
+              if (called->getName().starts_with("llvm.var.annotation")) {
                 StringRef annoStr = getAnnotationString(CI);
                 PRINT(llvm::Twine("Annotation string is: ") + annoStr, LOW);
-                if (annoStr.startswith("secret")) {
+                if (annoStr.starts_with("secret")) {
                   PRINT("Found secret annotation directly on alloca.", LOW);
                   return true;
                 }
@@ -369,10 +369,10 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
               if (auto *CI = dyn_cast<CallInst>(V)) {
                 if (Function *called = CI->getCalledFunction()) {
                   PRINT(llvm::Twine("Found call instruction on bitcast: ") + called->getName(), LOW);
-                  if (called->getName().startswith("llvm.var.annotation")) {
+                  if (called->getName().starts_with("llvm.var.annotation")) {
                     StringRef annoStr = getAnnotationString(CI);
                     PRINT(llvm::Twine("Annotation string from bitcast is: ") + annoStr, LOW);
-                    if (annoStr.startswith("secret")) {
+                    if (annoStr.starts_with("secret")) {
                       PRINT("Found secret annotation on bitcast.", LOW);
                       return true;
                     }
@@ -460,28 +460,45 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
     // an instruction that uses it. This example limits itself to instructions in the same block.
     // Also, a control dependency edge is added from the conditional instruction to the first
     // instruction of the block.
-    void buildDDGForBasicBlock(BasicBlock *BB, DataDependenceGraph &ddg,
-                               const Instruction *condInst) {
-      // If the block is not empty, add a control edge from the secret-dependent branch instruction
-      // to the block's first instruction.
+    
+    void buildDDGForBasicBlock(BasicBlock *BB,
+      DataDependenceGraph &ddg,
+      const Instruction *condInst) {
+      // 1) Add control‑dependency edge into the first instruction
       if (!BB->empty()) {
-        Instruction *firstInst = &*(BB->begin());
+        Instruction *firstInst = &*BB->begin();
         ddg.addNode(firstInst);
         ddg.addEdge(condInst, firstInst);
       }
-      // Process each instruction in the basic block.
+
+      // 2) Walk the block, skipping any PGO counter updates
       for (Instruction &I : *BB) {
+        // --- begin PGO filter ---
+        if (auto *LI = dyn_cast<LoadInst>(&I)) {
+          Value *ptr = LI->getPointerOperand()->stripPointerCasts();
+          if (auto *GV = dyn_cast<GlobalVariable>(ptr))
+            if (GV->getName().startswith("__profc"))
+              continue;
+        } else if (auto *SI = dyn_cast<StoreInst>(&I)) {
+          Value *ptr = SI->getPointerOperand()->stripPointerCasts();
+          if (auto *GV = dyn_cast<GlobalVariable>(ptr))
+            if (GV->getName().startswith("__profc"))
+              continue;
+        }
+        // --- end PGO filter ---
+
+        // 3) Add this instruction as a node in the DDG
         ddg.addNode(&I);
-        // For each operand of 'I', if the operand is defined by an instruction in BB, add a def-use edge.
-        for (unsigned op = 0; op < I.getNumOperands(); ++op) {
-          if (Instruction *defInst = dyn_cast<Instruction>(I.getOperand(op))) {
-            //TODO : Does getParent capture all data dependencies??
+
+        // 4) Add data‑dependence edges for each operand defined in the same block
+        for (unsigned op = 0, e = I.getNumOperands(); op != e; ++op) {
+          if (auto *defInst = dyn_cast<Instruction>(I.getOperand(op)))
             if (defInst->getParent() == BB)
               ddg.addEdge(defInst, &I);
-          }
         }
       }
     }
+
 
     // Dump the data-dependence graph in DOT format to a file.
     void dumpDDG(const DataDependenceGraph &ddg, const std::string &FileName) {
@@ -626,58 +643,53 @@ Value* buildStructuredDummyFlow(IRBuilder<> &Builder,
 
     PRINT("End of Pass", HIGH);
 
-    // supergraph flow from here - ideally call it from from F.getName().str() + "_supergraph.dot"
-    std::string superDot = F.getName().str() + "_supergraph.dot";
-    auto superGraphOps = parseSupergraphDot(superDot);
-    if (superGraphOps.empty()) {
-        errs() << "Warning: no opcodes parsed from " << superDot << "\n";
+    std::vector<std::string> superGraphOps;
+
+    if (optimizeSupergraph_){
+      // supergraph flow from here - ideally call it from from F.getName().str() + "_supergraph.dot"
+      std::string superDot = F.getName().str() + "_supergraph.dot";
+      superGraphOps = parseSupergraphDot(superDot);
+      if (superGraphOps.empty()) {
+          errs() << "Warning: no opcodes parsed from " << superDot << "\n";
+      }
     }
 
-    // SuperGraph supergraph = mergeDDGs(allDDGs);
-    // dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
+    else{
+      SuperGraph supergraph = mergeDDGs(allDDGs);
+      dumpSuperGraph(supergraph, F.getName().str() + "_supergraph.dot");
 
-    // Anirudh: This is the main dummy insertion loop
-    // auto superGraphOps = extractSuperGraphOpSequence(supergraph);
-    size_t offset = 0;
-    size_t totalDDGs = allDDGs.size();
-    size_t totalOps = superGraphOps.size();
-    int i=0;
+      // Anirudh: This is the main dummy insertion loop
+      superGraphOps = extractSuperGraphOpSequence(supergraph);
+    }
+
+  
     for (auto &ddg : allDDGs) {
-        if (!ddg.Nodes.empty()) {
-            const Instruction *anyInst = *ddg.Nodes.begin();
-            BasicBlock *BB = const_cast<BasicBlock*>(anyInst->getParent());
+      if (!ddg.Nodes.empty()) {
+          const Instruction *anyInst = *ddg.Nodes.begin();
+          BasicBlock *BB = const_cast<BasicBlock*>(anyInst->getParent());
 
-            IRBuilder<> Builder(&*BB->getFirstInsertionPt());
-            errs() << "Inserted dummy chain for block: " << BB->getName() << "\n";
-            size_t opsForThisBlock = totalOps / totalDDGs;
-            if (i < totalOps % totalDDGs) opsForThisBlock++; // Distribute remainder fairly
+          IRBuilder<> Builder(&*BB->getFirstInsertionPt());
+          errs() << "Inserted dummy chain for block: " << BB->getName() << "\n";
+          buildStructuredDummyFlow(Builder, superGraphOps, ALL_DUMMY_OPERANDS); // Start with safe mode
 
-            std::vector<std::string> partialOps(
-                superGraphOps.begin() + offset,
-                superGraphOps.begin() + offset + opsForThisBlock
-            );
-            offset += opsForThisBlock;
-            buildStructuredDummyFlow(Builder, partialOps, ALL_DUMMY_OPERANDS); // Start with safe mode
+          // Anirudh: This is to verify that padding occurs and in correct amount
+          size_t realOpCount = 0;
+          for (const Instruction *I : ddg.Nodes) {
+              unsigned opcode = I->getOpcode();
+              if (Instruction::isBinaryOp(opcode) || isa<LoadInst>(I) || isa<StoreInst>(I) || isa<AllocaInst>(I)) {
+                  realOpCount++;
+              }
+          }
 
-            // Anirudh: This is to verify that padding occurs and in correct amount
-            size_t realOpCount = 0;
-            for (const Instruction *I : ddg.Nodes) {
-                unsigned opcode = I->getOpcode();
-                if (Instruction::isBinaryOp(opcode) || isa<LoadInst>(I) || isa<StoreInst>(I) || isa<AllocaInst>(I)) {
-                    realOpCount++;
-                }
-            }
+          size_t dummyOpCount = superGraphOps.size() > realOpCount ? superGraphOps.size() - realOpCount : 0;
+          size_t superGraphOpCount = superGraphOps.size();
 
-            size_t dummyOpCount = superGraphOps.size() > realOpCount ? superGraphOps.size() - realOpCount : 0;
-            size_t superGraphOpCount = superGraphOps.size();
-
-            errs() << "Verification for DDG in block: " << BB->getName() << "\n";
-            errs() << "  Real Ops: " << realOpCount << "\n";
-            errs() << "  Dummy Ops: " << dummyOpCount << "\n";
-            errs() << "  SuperGraph Ops: " << superGraphOpCount << "\n";
-            assert(realOpCount + dummyOpCount == superGraphOpCount); // can remove previous statement. 
-        }
-        i++;
+          errs() << "Verification for DDG in block: " << BB->getName() << "\n";
+          errs() << "  Real Ops: " << realOpCount << "\n";
+          errs() << "  Dummy Ops: " << dummyOpCount << "\n";
+          errs() << "  SuperGraph Ops: " << superGraphOpCount << "\n";
+          assert(realOpCount + dummyOpCount == superGraphOpCount); // can remove previous statement. 
+      }
     }
     return PreservedAnalyses::all();
   }
