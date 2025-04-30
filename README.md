@@ -39,10 +39,7 @@ To obfuscate a standalone C++ source:
 2. Navigate to the benchmarks directory and invoke the compilation script:
    ```sh
    cd benchmarks/correctness
-   # Stacked padding (naïve)
-   ./compile.sh mycode stacked
-   # Merged padding (optimized)
-   ./compile.sh mycode merged
+   ./compile.sh mycode
    ```
    This produces three binaries:
    - `mycode_base`    — unobfuscated baseline
@@ -84,6 +81,8 @@ MirrorMaze includes a suite of standard and custom benchmarks for end-to-end eva
      python3 stats.py <benchmark1>_perf.json <benchmark2>_perf.json <benchmark3>_perf.json <benchmark4>_perf.json <benchmark5>_perf.json -o plot --title "Performance Benchmarking" --labels "Unobfuscated","Stacked","Merged"
      ```
 
+     This box plot compares the execution time distributions for each benchmark, showing the medians, interquartile ranges, and overall variance.
+
 ---
 
 ## Directory Layout
@@ -93,13 +92,11 @@ MirrorMaze includes a suite of standard and custom benchmarks for end-to-end eva
 ├── benchmarks/
 │   └── correctness/
 │       ├── mycode.cpp   # example user file
-│       ├── mycode_base
-│       ├── mycode_stacked
-│       ├── mycode_merged
-│       ├── base.csv
+│       ├── stats.py     # box plot for the benchmarks
 │       ├── mycode_perf.json
 │       └── dot_visualizations/
 ├── hw2pass/
+│   ├── merge_ddg.py    # script that helps with the supergraph formation
 │   └── HW2Pass.so      # built pass plugin
 ├── CMakeLists.txt
 ├── compile.sh          # driver script for single files and suite
