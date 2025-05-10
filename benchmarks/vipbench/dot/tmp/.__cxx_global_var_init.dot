@@ -1,0 +1,5 @@
+digraph "CFG for '__cxx_global_var_init' function" {
+	label="CFG for '__cxx_global_var_init' function";
+
+	Node0x564268c07c20 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{entry:\l|  %pgocount1 = load i64, ptr\l... @__profc_edit_distance.cpp___cxx_global_var_init.2, align 8, !dbg !13061\l  %0 = add i64 %pgocount1, 1, !dbg !13061\l  store i64 %0, ptr @__profc_edit_distance.cpp___cxx_global_var_init.2, align\l... 8, !dbg !13061\l  %pgocount = load i64, ptr @__profc_edit_distance.cpp___cxx_global_var_init,\l... align 8, !dbg !13061\l  %1 = add i64 %pgocount, 1, !dbg !13061\l  store i64 %1, ptr @__profc_edit_distance.cpp___cxx_global_var_init, align 8,\l... !dbg !13061\l  call void @_ZNSt8ios_base4InitC1Ev(ptr noundef nonnull align 1\l... dereferenceable(1) @_ZStL8__ioinit), !dbg !13061\l  %2 = call i32 @__cxa_atexit(ptr @_ZNSt8ios_base4InitD1Ev, ptr\l... @_ZStL8__ioinit, ptr @__dso_handle) #3, !dbg !13063\l  ret void, !dbg !13061\l}"];
+}
